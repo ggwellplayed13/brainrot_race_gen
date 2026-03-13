@@ -143,25 +143,35 @@ class AnimationConfig:
     idle_frames: int = 4
     celebration_frames: int = 12
     animation_speed: float = 0.15
-    bounce_amplitude: float = 8.0
+    bounce_amplitude: float = 18.0  # was 8.0 - MUCH bigger
     bounce_frequency: float = 0.3
     lean_angle_max: float = 12.0
-    squash_stretch_amount: float = 0.08
+    squash_stretch_amount: float = 0.18  # was 0.08
+    speed_trail_count: int = 3
+    emoji_popup_enabled: bool = True
+    dust_puff_enabled: bool = True
+    wiggle_near_finish: bool = True
+    celebration_jump_height: float = 40.0
 
 @dataclass
 class SceneConfig:
     """Configuration for scene rendering."""
-    sky_gradient_top: Tuple[int, int, int] = (30, 30, 60)
-    sky_gradient_bottom: Tuple[int, int, int] = (80, 60, 120)
-    track_color: Tuple[int, int, int] = (90, 90, 100)
-    lane_line_color: Tuple[int, int, int] = (255, 255, 255)
+    sky_gradient_top: Tuple[int, int, int] = (80, 20, 160)    # More vibrant
+    sky_gradient_bottom: Tuple[int, int, int] = (200, 80, 255)  # More vibrant
+    track_color: Tuple[int, int, int] = (140, 60, 200)  # Purple instead of gray
+    lane_line_color: Tuple[int, int, int] = (255, 255, 100)  # Yellow instead of white
     lane_line_width: int = 3
     finish_line_x: float = 0.90
     crowd_enabled: bool = True
-    particle_count: int = 60
+    particle_count: int = 120  # was 60
     parallax_layers: int = 3
     ground_y_ratio: float = 0.45
     track_height_ratio: float = 0.50
+    rainbow_lanes: bool = True
+    animated_finish_line: bool = True
+    ground_decorations: bool = True
+    pulsing_background: bool = True
+    subscribe_watermark: bool = True
 
 @dataclass
 class EventConfig:
@@ -177,6 +187,22 @@ class EventConfig:
     screen_flash_chance: float = 0.002
 
 @dataclass
+class EffectsConfig:
+    """Configuration for visual effects."""
+    speed_trails: bool = True
+    emoji_popups: bool = True
+    who_will_win_text: bool = True
+    overtake_callout: bool = True
+    screen_border_glow: bool = True
+    impact_frames: bool = True
+    fireworks_enabled: bool = True
+    fireworks_count: int = 8
+    confetti_count: int = 300
+    slow_motion_near_finish: bool = True
+    slow_motion_threshold: float = 0.85
+    screen_zoom_on_overtake: bool = True
+
+@dataclass
 class MasterConfig:
     """Master configuration that holds all sub-configurations."""
     video: VideoConfig = field(default_factory=VideoConfig)
@@ -184,6 +210,7 @@ class MasterConfig:
     animation: AnimationConfig = field(default_factory=AnimationConfig)
     scene: SceneConfig = field(default_factory=SceneConfig)
     event: EventConfig = field(default_factory=EventConfig)
+    effects: EffectsConfig = field(default_factory=EffectsConfig)
     output_dir: str = "/content/generated_races"
     seed: Optional[int] = None
     batch_size: int = 1
@@ -621,10 +648,10 @@ class ProceduralCharacterGenerator:
         bounce_y = 0
         lean_x = 0
         if animation_type == "run":
-            bounce_y = int(math.sin(phase * 2 * math.pi) * 6)
-            lean_x = int(math.sin(phase * 2 * math.pi) * 3)
+            bounce_y = int(math.sin(phase * 2 * math.pi) * 14)
+            lean_x = int(math.sin(phase * 2 * math.pi) * 8)
         elif animation_type == "celebrate":
-            bounce_y = int(abs(math.sin(phase * 4 * math.pi)) * 14)
+            bounce_y = int(abs(math.sin(phase * 6 * math.pi)) * self.config.celebration_jump_height)
         elif animation_type == "idle":
             bounce_y = int(math.sin(phase * 2 * math.pi) * 2)
 
@@ -660,7 +687,7 @@ class ProceduralCharacterGenerator:
         # --- HEAD ---
         head_cx = body_cx + lean_x
         head_cy = by - body_ry - 18
-        head_r = 24
+        head_r = 30
 
         # Head shadow
         draw.ellipse(
@@ -714,9 +741,9 @@ class ProceduralCharacterGenerator:
     ):
         """Draw character eyes based on style."""
         eye_y = cy - 3
-        eye_left_x = cx - 9
-        eye_right_x = cx + 9
-        eye_size = 7
+        eye_left_x = cx - 12
+        eye_right_x = cx + 12
+        eye_size = 10
 
         white = (255, 255, 255, 255)
         black = (20, 20, 20, 255)
@@ -1804,6 +1831,8 @@ class SceneType(Enum):
     JUNGLE = auto()
     SPACE = auto()
     OCEAN = auto()
+    CANDY_RAINBOW = auto()
+    LAVA_VOLCANO = auto()
 
 class BaseScene(ABC):
     """Abstract base class for all scene types."""
@@ -2192,12 +2221,426 @@ class NeonCityScene(BaseScene):
                 int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio)))
 
 
+class CandyRainbowScene(BaseScene):
+    """Candy/Rainbow themed race track - vibrant and super colorful for kids."""
+
+    def __init__(self, config: MasterConfig, rng: random.Random):
+        super().__init__(config, rng)
+        self.candy_colors = [
+            (255, 80, 150),   # Hot pink
+            (255, 200, 50),   # Yellow
+            (100, 220, 100),  # Green
+            (100, 180, 255),  # Sky blue
+            (200, 100, 255),  # Purple
+            (255, 140, 60),   # Orange
+        ]
+        self.floating_elements: List[Dict] = []
+        self.cloud_positions: List[Dict] = []
+        self._generate_elements()
+        self._generate_clouds()
+        self._generate_static_bg()
+
+    def _generate_elements(self):
+        """Generate floating candy/star elements."""
+        for _ in range(30):
+            self.floating_elements.append({
+                "x": self.rng.randint(0, self.vc.width),
+                "y": self.rng.randint(20, int(self.vc.height * self.sc.ground_y_ratio) - 20),
+                "type": self.rng.choice(["star", "circle", "diamond"]),
+                "color": self.rng.choice(self.candy_colors),
+                "size": self.rng.randint(8, 24),
+                "speed": self.rng.uniform(0.2, 1.5),
+                "phase": self.rng.uniform(0, 2 * math.pi),
+                "spin_speed": self.rng.uniform(0.02, 0.08),
+            })
+
+    def _generate_clouds(self):
+        """Generate fluffy candy clouds."""
+        for _ in range(6):
+            self.cloud_positions.append({
+                "x": self.rng.randint(-100, self.vc.width + 100),
+                "y": self.rng.randint(30, 200),
+                "width": self.rng.randint(100, 250),
+                "height": self.rng.randint(40, 80),
+                "speed": self.rng.uniform(0.2, 0.8),
+                "color": self.rng.choice([(255, 200, 220), (220, 200, 255), (200, 240, 255)]),
+                "opacity": self.rng.randint(160, 230),
+            })
+
+    def _generate_static_bg(self):
+        """Generate candy/rainbow background."""
+        w, h = self.vc.width, self.vc.height
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(img)
+
+        ground_y = int(h * self.sc.ground_y_ratio)
+
+        # Rainbow sky gradient
+        rainbow_sky = [
+            (255, 120, 180),  # Pink
+            (255, 180, 80),   # Orange
+            (255, 240, 80),   # Yellow
+            (120, 220, 120),  # Green
+            (80, 180, 255),   # Blue
+        ]
+        for y in range(ground_y):
+            t = y / max(1, ground_y)
+            seg = t * (len(rainbow_sky) - 1)
+            idx = int(seg)
+            frac = seg - idx
+            if idx >= len(rainbow_sky) - 1:
+                color = rainbow_sky[-1]
+            else:
+                c1, c2 = rainbow_sky[idx], rainbow_sky[idx + 1]
+                color = ColorUtils.blend(c1, c2, frac)
+            draw.line([(0, y), (w, y)], fill=color + (255,))
+
+        # Track area with rainbow lanes
+        track_top = ground_y
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio))
+        num_lanes = self.config.race.lane_count
+        lane_colors = [
+            (255, 150, 200),  # Pink
+            (255, 220, 100),  # Yellow
+            (150, 255, 150),  # Green
+            (150, 200, 255),  # Blue
+            (220, 150, 255),  # Purple
+        ]
+
+        for i in range(num_lanes):
+            lane_top = int(MathUtils.lerp(track_top, track_bottom, i / num_lanes))
+            lane_bot = int(MathUtils.lerp(track_top, track_bottom, (i + 1) / num_lanes))
+            lc = lane_colors[i % len(lane_colors)]
+            for y in range(lane_top, lane_bot):
+                t = (y - lane_top) / max(1, lane_bot - lane_top)
+                shade = ColorUtils.blend(lc, ColorUtils.darken(lc, 0.7), t * 0.4)
+                draw.line([(0, y), (w, y)], fill=shade + (255,))
+
+        # Lane dividers (white dashed)
+        for i in range(1, num_lanes):
+            ly = int(MathUtils.lerp(track_top, track_bottom, i / num_lanes))
+            x = 0
+            while x < w:
+                draw.line([(x, ly), (x + 20, ly)], fill=(255, 255, 255, 180), width=3)
+                x += 35
+
+        # Below track
+        for y in range(track_bottom, h):
+            t = (y - track_bottom) / max(1, h - track_bottom)
+            color = ColorUtils.blend((200, 100, 200), (150, 50, 150), t)
+            draw.line([(0, y), (w, y)], fill=color + (255,))
+
+        # Finish line (checkerboard)
+        finish_x = int(w * self.sc.finish_line_x)
+        checker_size = 14
+        finish_colors = [(255, 255, 255), (255, 50, 150)]
+        for y in range(track_top, track_bottom):
+            for cx_pos in range(finish_x - checker_size, finish_x + checker_size, checker_size):
+                row = (y - track_top) // checker_size
+                col = (cx_pos - (finish_x - checker_size)) // checker_size
+                color = finish_colors[(row + col) % 2]
+                draw.rectangle([cx_pos, y, cx_pos + checker_size,
+                                min(y + checker_size, track_bottom)],
+                               fill=color + (220,))
+
+        self._cached_bg = img
+
+    def render_background(self, frame: int, race_progress: float) -> Image.Image:
+        """Render candy/rainbow background with animated elements."""
+        img = self._cached_bg.copy()
+        draw = ImageDraw.Draw(img)
+        w, h = self.vc.width, self.vc.height
+        ground_y = int(h * self.sc.ground_y_ratio)
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio))
+
+        # Pulsing background tint
+        pulse = (math.sin(frame * 0.05) + 1) / 2 * 15
+        if pulse > 5:
+            overlay = Image.new("RGBA", img.size, (255, 200, 255, int(pulse)))
+            img = Image.alpha_composite(img, overlay)
+            draw = ImageDraw.Draw(img)
+
+        # Animated floating elements
+        for elem in self.floating_elements:
+            ex = int((elem["x"] + frame * elem["speed"]) % (w + 50) - 25)
+            ey = int(elem["y"] + math.sin(frame * 0.03 + elem["phase"]) * 10)
+            es = elem["size"]
+            ec = elem["color"]
+            spin = frame * elem["spin_speed"]
+            if elem["type"] == "star":
+                points = []
+                for j in range(5):
+                    outer_a = spin + j * 2 * math.pi / 5 - math.pi / 2
+                    inner_a = outer_a + math.pi / 5
+                    points.append((ex + int(math.cos(outer_a) * es), ey + int(math.sin(outer_a) * es)))
+                    points.append((ex + int(math.cos(inner_a) * es // 2), ey + int(math.sin(inner_a) * es // 2)))
+                if len(points) >= 3:
+                    draw.polygon(points, fill=ec + (200,))
+            elif elem["type"] == "circle":
+                draw.ellipse([ex - es, ey - es, ex + es, ey + es], fill=ec + (180,))
+            elif elem["type"] == "diamond":
+                pts = [(ex, ey - es), (ex + es, ey), (ex, ey + es), (ex - es, ey)]
+                draw.polygon(pts, fill=ec + (180,))
+
+        # Animate candy clouds
+        for cloud in self.cloud_positions:
+            cx = int((cloud["x"] + frame * cloud["speed"]) % (w + 300) - 150)
+            cy = cloud["y"]
+            cw = cloud["width"]
+            ch = cloud["height"]
+            cc = cloud["color"]
+            op = cloud["opacity"]
+            draw.ellipse([cx - cw//2, cy - ch//2, cx + cw//2, cy + ch//2], fill=cc + (op,))
+            draw.ellipse([cx - cw//3, cy - ch//2 - ch//4, cx + cw//3, cy + ch//4], fill=cc + (op,))
+            draw.ellipse([cx, cy - ch//2 - ch//6, cx + cw//3, cy + ch//4], fill=cc + (op,))
+
+        # Animated finish line flash
+        if race_progress > 0.5:
+            finish_x = int(w * self.sc.finish_line_x)
+            flash_colors = [
+                (255, 80, 150), (255, 200, 50), (100, 255, 100),
+                (100, 180, 255), (200, 100, 255),
+            ]
+            flash_idx = (frame // 3) % len(flash_colors)
+            fc = flash_colors[flash_idx]
+            alpha = int(100 + 100 * abs(math.sin(frame * 0.2)))
+            draw.rectangle([finish_x - 8, int(h * self.sc.ground_y_ratio),
+                           finish_x + 8, track_bottom],
+                          fill=fc + (alpha,))
+
+        # Ground decorations - flowers
+        flower_colors = [(255, 80, 150), (255, 220, 50), (100, 255, 100)]
+        rng_dec = random.Random(42)
+        for i in range(20):
+            fx = rng_dec.randint(0, w)
+            fy = track_bottom + rng_dec.randint(5, 25)
+            fc = flower_colors[i % len(flower_colors)]
+            draw.ellipse([fx-5, fy-5, fx+5, fy+5], fill=fc + (200,))
+            draw.ellipse([fx-2, fy-2, fx+2, fy+2], fill=(255, 255, 100, 220))
+
+        return img
+
+    def get_lane_y(self, lane: int, total_lanes: int) -> int:
+        h = self.vc.height
+        track_top = int(h * self.sc.ground_y_ratio) + 30
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio)) - 30
+        t = (lane + 0.5) / total_lanes
+        return int(MathUtils.lerp(track_top, track_bottom, t))
+
+    def get_track_bounds(self) -> Tuple[int, int, int, int]:
+        h = self.vc.height
+        w = self.vc.width
+        return (0, int(h * self.sc.ground_y_ratio), w,
+                int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio)))
+
+
+class LavaVolcanoScene(BaseScene):
+    """Lava/Volcano themed race track - dramatic and intense."""
+
+    def __init__(self, config: MasterConfig, rng: random.Random):
+        super().__init__(config, rng)
+        self.volcanoes: List[Dict] = []
+        self.lava_particles: List[Dict] = []
+        self._generate_volcanoes()
+        self._generate_lava_particles()
+        self._generate_static_bg()
+
+    def _generate_volcanoes(self):
+        """Generate volcano silhouettes."""
+        x = 0
+        while x < self.vc.width:
+            vw = self.rng.randint(80, 200)
+            vh = self.rng.randint(150, 400)
+            self.volcanoes.append({
+                "x": x,
+                "width": vw,
+                "height": vh,
+                "eruption_phase": self.rng.uniform(0, 2 * math.pi),
+                "eruption_speed": self.rng.uniform(0.03, 0.08),
+            })
+            x += vw + self.rng.randint(20, 80)
+
+    def _generate_lava_particles(self):
+        """Generate animated lava particles."""
+        for _ in range(40):
+            self.lava_particles.append({
+                "x": self.rng.randint(0, self.vc.width),
+                "y": self.rng.randint(int(self.vc.height * 0.3), int(self.vc.height * 0.5)),
+                "vy": self.rng.uniform(-2, -6),
+                "vx": self.rng.uniform(-1, 1),
+                "size": self.rng.randint(4, 14),
+                "color": self.rng.choice([(255, 80, 0), (255, 160, 0), (255, 200, 50)]),
+                "phase": self.rng.uniform(0, 2 * math.pi),
+                "lifetime": self.rng.randint(20, 60),
+            })
+
+    def _generate_static_bg(self):
+        """Generate lava/volcano background."""
+        w, h = self.vc.width, self.vc.height
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(img)
+
+        ground_y = int(h * self.sc.ground_y_ratio)
+
+        # Dark reddish sky
+        for y in range(ground_y):
+            t = y / max(1, ground_y)
+            color = ColorUtils.blend((80, 10, 10), (200, 60, 20), t)
+            draw.line([(0, y), (w, y)], fill=color + (255,))
+
+        # Volcano silhouettes
+        for vol in self.volcanoes:
+            vx = vol["x"]
+            vw = vol["width"]
+            vh = vol["height"]
+            base_y = ground_y
+            peak_y = ground_y - vh
+            peak_x = vx + vw // 2
+            points = [
+                (vx, base_y),
+                (peak_x, peak_y),
+                (vx + vw, base_y),
+            ]
+            draw.polygon(points, fill=(60, 20, 10, 255))
+            draw.ellipse([peak_x - vw//8, peak_y - 10,
+                         peak_x + vw//8, peak_y + 10],
+                        fill=(120, 30, 10, 255))
+
+        # Track area - dark obsidian/lava
+        track_top = ground_y
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio))
+
+        for y in range(track_top, track_bottom):
+            t = (y - track_top) / max(1, track_bottom - track_top)
+            color = ColorUtils.blend((40, 15, 10), (25, 8, 5), t)
+            draw.line([(0, y), (w, y)], fill=color + (255,))
+
+        # Lava lane lines (glowing orange-red)
+        num_lanes = self.config.race.lane_count
+        lava_line_colors = [
+            (255, 100, 0), (255, 60, 0), (255, 140, 0),
+            (255, 80, 0), (255, 120, 0),
+        ]
+        for i in range(num_lanes + 1):
+            ly = int(MathUtils.lerp(track_top + 15, track_bottom - 15, i / num_lanes))
+            lc = lava_line_colors[i % len(lava_line_colors)]
+            draw.line([(0, ly), (w, ly)], fill=lc + (160,), width=3)
+
+        # Lava cracks in track
+        rng_crack = random.Random(99)
+        for _ in range(15):
+            cx_start = rng_crack.randint(0, w)
+            cy_start = rng_crack.randint(track_top, track_bottom)
+            crack_color = rng_crack.choice([(255, 100, 0, 180), (255, 160, 0, 150)])
+            points = [(cx_start, cy_start)]
+            for _ in range(5):
+                cx_start += rng_crack.randint(-20, 20)
+                cy_start += rng_crack.randint(-5, 5)
+                points.append((cx_start, cy_start))
+            if len(points) >= 2:
+                for j in range(len(points) - 1):
+                    draw.line([points[j], points[j+1]], fill=crack_color, width=2)
+
+        # Below track
+        for y in range(track_bottom, h):
+            draw.line([(0, y), (w, y)], fill=(20, 5, 5, 255))
+
+        # Finish line
+        finish_x = int(w * self.sc.finish_line_x)
+        checker_size = 12
+        for y in range(track_top, track_bottom):
+            for cx_pos in range(finish_x - checker_size, finish_x + checker_size, checker_size):
+                row = (y - track_top) // checker_size
+                col = (cx_pos - (finish_x - checker_size)) // checker_size
+                color = (255, 255, 255) if (row + col) % 2 == 0 else (255, 80, 0)
+                draw.rectangle([cx_pos, y, cx_pos + checker_size,
+                                min(y + checker_size, track_bottom)],
+                               fill=color + (220,))
+
+        self._cached_bg = img
+
+    def render_background(self, frame: int, race_progress: float) -> Image.Image:
+        """Render lava scene with animated eruptions."""
+        img = self._cached_bg.copy()
+        draw = ImageDraw.Draw(img)
+        w, h = self.vc.width, self.vc.height
+        ground_y = int(h * self.sc.ground_y_ratio)
+        track_top = ground_y
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio))
+
+        # Animated lava glow overlay
+        glow_intensity = (math.sin(frame * 0.05) + 1) / 2 * 20
+        if glow_intensity > 5:
+            overlay = Image.new("RGBA", img.size, (255, 60, 0, int(glow_intensity)))
+            img = Image.alpha_composite(img, overlay)
+            draw = ImageDraw.Draw(img)
+
+        # Volcano eruptions
+        for vol in self.volcanoes:
+            phase = vol["eruption_phase"] + frame * vol["eruption_speed"]
+            erupt_intensity = (math.sin(phase) + 1) / 2
+            if erupt_intensity > 0.6:
+                peak_x = vol["x"] + vol["width"] // 2
+                peak_y = ground_y - vol["height"]
+                num_sparks = int(erupt_intensity * 8) + 2
+                for spark_i in range(num_sparks):
+                    spark_rng = random.Random(frame + vol["x"] + spark_i)
+                    sx = peak_x + spark_rng.randint(-15, 15)
+                    sy = peak_y - spark_rng.randint(0, int(40 * erupt_intensity))
+                    sr = spark_rng.randint(2, 6)
+                    sc_color = spark_rng.choice([(255, 100, 0), (255, 200, 50), (255, 60, 0)])
+                    draw.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=sc_color + (200,))
+
+        # Lava crack glow
+        lava_glow = (math.sin(frame * 0.08) + 1) / 2
+        if lava_glow > 0.5:
+            glow_overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            glow_draw = ImageDraw.Draw(glow_overlay)
+            rng_glow = random.Random(frame // 5)
+            for _ in range(5):
+                gx = rng_glow.randint(0, w)
+                gy = rng_glow.randint(track_top, track_bottom)
+                gr = rng_glow.randint(5, 20)
+                ga = int(lava_glow * 80)
+                glow_draw.ellipse([gx - gr, gy - gr, gx + gr, gy + gr],
+                                 fill=(255, 120, 0, ga))
+            img = Image.alpha_composite(img, glow_overlay)
+            draw = ImageDraw.Draw(img)
+
+        # Animated finish line
+        if race_progress > 0.4:
+            finish_x = int(w * self.sc.finish_line_x)
+            flash_colors = [(255, 100, 0), (255, 200, 50), (255, 255, 255)]
+            flash_idx = (frame // 4) % len(flash_colors)
+            fc = flash_colors[flash_idx]
+            alpha = int(80 + 120 * abs(math.sin(frame * 0.2)))
+            draw.rectangle([finish_x - 10, track_top, finish_x + 10, track_bottom],
+                          fill=fc + (alpha,))
+
+        return img
+
+    def get_lane_y(self, lane: int, total_lanes: int) -> int:
+        h = self.vc.height
+        track_top = int(h * self.sc.ground_y_ratio) + 30
+        track_bottom = int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio)) - 30
+        t = (lane + 0.5) / total_lanes
+        return int(MathUtils.lerp(track_top, track_bottom, t))
+
+    def get_track_bounds(self) -> Tuple[int, int, int, int]:
+        h = self.vc.height
+        w = self.vc.width
+        return (0, int(h * self.sc.ground_y_ratio), w,
+                int(h * (self.sc.ground_y_ratio + self.sc.track_height_ratio)))
+
+
 class SceneFactory:
     """Factory for creating scenes."""
 
     SCENE_MAP = {
         SceneType.STANDARD_TRACK: StandardTrackScene,
         SceneType.NEON_CITY: NeonCityScene,
+        SceneType.CANDY_RAINBOW: CandyRainbowScene,
+        SceneType.LAVA_VOLCANO: LavaVolcanoScene,
     }
 
     @classmethod
@@ -2313,9 +2756,9 @@ class HUDRenderer:
         # --- Position leaderboard (top-left) ---
         sorted_chars = sorted(characters, key=lambda c: c.position, reverse=True)
         panel_x = 20
-        panel_y = 40
-        panel_w = 280
-        panel_h = 40 * len(characters) + 20
+        panel_y = 50
+        panel_w = 320
+        panel_h = 48 * len(characters) + 20
 
         # Semi-transparent panel background
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -2328,11 +2771,11 @@ class HUDRenderer:
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
-        font_small = self._get_font(22)
-        font_pos = self._get_font(26)
+        font_small = self._get_font(28)
+        font_pos = self._get_font(32)
 
         for i, char in enumerate(sorted_chars):
-            cy = panel_y + 10 + i * 40
+            cy = panel_y + 10 + i * 48
 
             # Position number
             pos_text = f"#{i + 1}"
@@ -2361,7 +2804,7 @@ class HUDRenderer:
                                fill=body_color)
 
         # --- "RACE" title ---
-        title_font = self._get_font(36)
+        title_font = self._get_font(44)
         race_text = "🏁 BRAINROT RACE 🏁"
         bbox = draw.textbbox((0, 0), race_text, font=title_font)
         tw = bbox[2] - bbox[0]
@@ -2387,6 +2830,15 @@ class HUDRenderer:
         overlay_draw.rectangle([0, 0, w, h], fill=(0, 0, 0, fade_alpha))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
+
+        # Rainbow color flash during celebration
+        if celebration_progress > 0.15:
+            hue = (celebration_progress * 3.0) % 1.0
+            rc, gc, bc = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 0.8, 1.0)]
+            flash_alpha = int(30 * abs(math.sin(celebration_progress * 10)))
+            rainbow_overlay = Image.new("RGBA", img.size, (rc, gc, bc, flash_alpha))
+            img = Image.alpha_composite(img, rainbow_overlay)
+            draw = ImageDraw.Draw(img)
 
         if celebration_progress < 0.1:
             return img
@@ -2443,20 +2895,22 @@ class HUDRenderer:
 
         # Confetti during celebration
         if celebration_progress > 0.2:
-            self._draw_celebration_confetti(draw, w, h, celebration_progress)
+            self._draw_celebration_confetti(draw, w, h, celebration_progress,
+                                            self.config.effects.confetti_count)
 
         return img
 
     def _draw_celebration_confetti(
-        self, draw: ImageDraw.Draw, w: int, h: int, progress: float
+        self, draw: ImageDraw.Draw, w: int, h: int, progress: float,
+        confetti_count: int = 300
     ):
         """Draw celebratory confetti particles."""
         rng = random.Random(42)  # Deterministic for consistent confetti
-        num_confetti = int(progress * 80)
+        num_confetti = int(progress * confetti_count)
         for i in range(num_confetti):
             cx = rng.randint(0, w)
             cy = int((progress * 2 + rng.random()) * h * 0.4) % h
-            size = rng.randint(4, 12)
+            size = rng.randint(8, 20)
             color = ColorUtils.random_vibrant()
             rot = rng.uniform(0, 360)
             # Simple rectangle confetti
@@ -2496,6 +2950,137 @@ class HUDRenderer:
             )
             draw.text((tag_x, tag_y), name, font=font, fill=(255, 255, 255))
 
+        return img
+
+    def render_subscribe_watermark(self, img: Image.Image, frame: int) -> Image.Image:
+        """Render animated SUBSCRIBE watermark."""
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+        font = self._get_font(32)
+        text = "👆 SUBSCRIBE! 👆"
+
+        # Pulsing alpha
+        alpha_pulse = int(180 + 60 * abs(math.sin(frame * 0.08)))
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        tx = (w - tw) // 2
+        ty = h - 80
+
+        # Background
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        pad = 10
+        ov_draw.rounded_rectangle(
+            [tx - pad, ty - pad // 2, tx + tw + pad, ty + 40 + pad // 2],
+            radius=12,
+            fill=(255, 0, 0, min(alpha_pulse, 200))
+        )
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
+
+        # Shadow
+        draw.text((tx + 2, ty + 2), text, font=font, fill=(0, 0, 0))
+        # Main text
+        draw.text((tx, ty), text, font=font, fill=(255, 255, 255))
+        return img
+
+    def render_progress_bar(self, img: Image.Image, characters: List[Character]) -> Image.Image:
+        """Render overall race progress bar at bottom of screen."""
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+
+        bar_x = 60
+        bar_y = h - 130
+        bar_w = w - 120
+        bar_h = 18
+
+        # Background
+        draw.rounded_rectangle([bar_x - 2, bar_y - 2, bar_x + bar_w + 2, bar_y + bar_h + 2],
+                               radius=10, fill=(0, 0, 0, 160))
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h],
+                               radius=8, fill=(60, 60, 60, 200))
+
+        # Leader progress
+        if characters:
+            leader = max(characters, key=lambda c: c.position)
+            progress = min(1.0, leader.position)
+            if progress > 0:
+                # Rainbow gradient fill
+                for i in range(int(bar_w * progress)):
+                    t = i / max(1, bar_w)
+                    r = int(255 * abs(math.sin(t * math.pi)))
+                    g = int(200 * abs(math.sin(t * math.pi + 2.09)))
+                    b = int(255 * abs(math.sin(t * math.pi + 4.19)))
+                    draw.line([(bar_x + i, bar_y), (bar_x + i, bar_y + bar_h)],
+                             fill=(r, g, b, 220))
+
+        # Finish flag icon
+        draw.text((bar_x + bar_w + 5, bar_y - 4), "🏁", font=self._get_font(22), fill=(255, 255, 255))
+        draw.text((bar_x - 30, bar_y - 4), "🚀", font=self._get_font(22), fill=(255, 255, 255))
+
+        return img
+
+    def render_who_will_win(self, img: Image.Image, frame: int) -> Image.Image:
+        """Render dramatic WHO WILL WIN text."""
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+
+        font = self._get_font(72)
+        text = "WHO WILL WIN?!"
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        tx = (w - tw) // 2
+        ty = h // 3
+
+        # Shake effect
+        shake_x = int(math.sin(frame * 1.5) * 4)
+        shake_y = int(math.cos(frame * 2.0) * 3)
+
+        # Rainbow color cycle
+        hue = (frame * 0.03) % 1.0
+        r, g, b = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0)]
+
+        # Glow
+        for offset in [6, 4, 2]:
+            for dx, dy in [(-offset, 0), (offset, 0), (0, -offset), (0, offset)]:
+                draw.text((tx + dx + shake_x, ty + dy + shake_y), text, font=font,
+                         fill=(r, g, b, 60))
+
+        # Shadow
+        draw.text((tx + 4 + shake_x, ty + 4 + shake_y), text, font=font, fill=(0, 0, 0))
+        # Main
+        draw.text((tx + shake_x, ty + shake_y), text, font=font, fill=(r, g, b))
+
+        return img
+
+    def render_overtake_callout(self, img: Image.Image, char_name: str, frame: int) -> Image.Image:
+        """Render OVERTAKE! callout text."""
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+
+        font = self._get_font(56)
+        text = f"🔄 OVERTAKE!"
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        tx = (w - tw) // 2
+
+        # Slide in from top
+        slide_progress = min(1.0, frame * 0.15)
+        ty = int(MathUtils.lerp(-100, h // 4, slide_progress))
+
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        pad = 12
+        ov_draw.rounded_rectangle([tx - pad, ty - 5, tx + tw + pad, ty + 55],
+                                  radius=15, fill=(255, 150, 0, 200))
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
+
+        draw.text((tx + 2, ty + 2), text, font=font, fill=(0, 0, 0))
+        draw.text((tx, ty), text, font=font, fill=(255, 255, 255))
         return img
 
 print("✅ HUD system loaded.")
@@ -2656,7 +3241,7 @@ class AudioManager:
         race_end_sample = int((countdown_duration + race_duration) * sample_rate)
         race_end_sample = min(race_end_sample, total_samples)
 
-        bpm = 140
+        bpm = 175
         beat_interval = 60.0 / bpm
         beat_sample_interval = int(beat_interval * sample_rate)
 
@@ -2817,6 +3402,18 @@ class FrameRenderer:
         elif state.phase == RacePhase.RACING:
             img = self.hud.render_race_hud(img, state.characters, frame)
             img = self.hud.render_name_tags(img, state.characters, scene)
+            if self.config.scene.subscribe_watermark:
+                img = self.hud.render_subscribe_watermark(img, frame)
+            img = self.hud.render_progress_bar(img, state.characters)
+            if race_progress > 0.7 and self.config.effects.who_will_win_text:
+                img = self.hud.render_who_will_win(img, frame)
+            # Overtake callout: show when a character gets a speed boost
+            if self.config.effects.overtake_callout:
+                for ev in events:
+                    if ev.event_type == EventType.SPEED_BOOST and ev.age < 10:
+                        char_name = ev.data.get("target_name", "")
+                        img = self.hud.render_overtake_callout(img, char_name, int(ev.age))
+                        break
         elif state.phase == RacePhase.CELEBRATION:
             img = self.hud.render_race_hud(img, state.characters, frame)
             if state.winner:
@@ -2830,6 +3427,10 @@ class FrameRenderer:
         shake_x, shake_y = state.camera_shake
         if abs(shake_x) > 0.5 or abs(shake_y) > 0.5:
             img = self._apply_camera_shake(img, shake_x, shake_y)
+
+        # 5b. Screen border glow during exciting moments
+        if self.config.effects.screen_border_glow and state.phase == RacePhase.RACING:
+            img = self._render_border_glow(img, frame, race_progress)
 
         # 6. Convert to numpy RGB array
         # Ensure RGBA then convert to RGB
@@ -2871,7 +3472,7 @@ class FrameRenderer:
                 )
             elif char.current_animation == "celebrate":
                 bounce_y = int(
-                    abs(math.sin(frame * 0.3)) * self.ac.bounce_amplitude * 2
+                    abs(math.sin(frame * 0.3)) * self.ac.celebration_jump_height
                 )
 
             # Store screen position for HUD
@@ -2907,6 +3508,21 @@ class FrameRenderer:
                 img.paste(shadow, (paste_x + new_w // 8, shadow_y), shadow)
             except (ValueError, Exception):
                 pass
+
+            # Speed trails / afterimages when boosting
+            if char.is_boosting and self.config.effects.speed_trails:
+                trail_count = self.config.animation.speed_trail_count
+                for trail_i in range(trail_count):
+                    trail_offset = (trail_i + 1) * 20
+                    trail_alpha = max(10, 80 - trail_i * (70 // max(1, trail_count)))
+                    trail_sprite = scaled_sprite.copy()
+                    trail_arr = np.array(trail_sprite)
+                    trail_arr[:, :, 3] = (trail_arr[:, :, 3] * trail_alpha // 255).astype(np.uint8)
+                    trail_img = Image.fromarray(trail_arr, 'RGBA')
+                    try:
+                        img.paste(trail_img, (paste_x - trail_offset, paste_y), trail_img)
+                    except Exception:
+                        pass
 
             # Paste character sprite
             try:
@@ -2947,6 +3563,31 @@ class FrameRenderer:
         shifted = Image.new("RGBA", img.size, (0, 0, 0, 255))
         shifted.paste(img, (sx, sy))
         return shifted
+
+    def _render_border_glow(
+        self, img: Image.Image, frame: int, race_progress: float
+    ) -> Image.Image:
+        """Render a pulsing colored border glow around the screen."""
+        if race_progress < 0.5:
+            return img
+        w, h = img.size
+        # Intensity increases near finish
+        intensity = min(1.0, (race_progress - 0.5) * 2.0)
+        hue = (frame * 0.02) % 1.0
+        rc, gc, bc = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0)]
+        glow_alpha = int(intensity * 60 * abs(math.sin(frame * 0.1)))
+        if glow_alpha < 5:
+            return img
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        border = 20
+        # Draw thick border
+        for b in range(border, 0, -4):
+            a = int(glow_alpha * b / border)
+            ov_draw.rectangle([border - b, border - b, w - (border - b), h - (border - b)],
+                             outline=(rc, gc, bc, a), width=4)
+        return Image.alpha_composite(img, overlay)
+
 
 print("✅ Frame renderer loaded.")
 
