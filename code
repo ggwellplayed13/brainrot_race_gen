@@ -651,7 +651,7 @@ class ProceduralCharacterGenerator:
             bounce_y = int(math.sin(phase * 2 * math.pi) * 14)
             lean_x = int(math.sin(phase * 2 * math.pi) * 8)
         elif animation_type == "celebrate":
-            bounce_y = int(abs(math.sin(phase * 6 * math.pi)) * 30)
+            bounce_y = int(abs(math.sin(phase * 6 * math.pi)) * self.config.celebration_jump_height)
         elif animation_type == "idle":
             bounce_y = int(math.sin(phase * 2 * math.pi) * 2)
 
@@ -2895,16 +2895,18 @@ class HUDRenderer:
 
         # Confetti during celebration
         if celebration_progress > 0.2:
-            self._draw_celebration_confetti(draw, w, h, celebration_progress)
+            self._draw_celebration_confetti(draw, w, h, celebration_progress,
+                                            self.config.effects.confetti_count)
 
         return img
 
     def _draw_celebration_confetti(
-        self, draw: ImageDraw.Draw, w: int, h: int, progress: float
+        self, draw: ImageDraw.Draw, w: int, h: int, progress: float,
+        confetti_count: int = 300
     ):
         """Draw celebratory confetti particles."""
         rng = random.Random(42)  # Deterministic for consistent confetti
-        num_confetti = int(progress * 300)
+        num_confetti = int(progress * confetti_count)
         for i in range(num_confetti):
             cx = rng.randint(0, w)
             cy = int((progress * 2 + rng.random()) * h * 0.4) % h
@@ -3400,16 +3402,18 @@ class FrameRenderer:
         elif state.phase == RacePhase.RACING:
             img = self.hud.render_race_hud(img, state.characters, frame)
             img = self.hud.render_name_tags(img, state.characters, scene)
-            img = self.hud.render_subscribe_watermark(img, frame)
+            if self.config.scene.subscribe_watermark:
+                img = self.hud.render_subscribe_watermark(img, frame)
             img = self.hud.render_progress_bar(img, state.characters)
-            if race_progress > 0.7:
+            if race_progress > 0.7 and self.config.effects.who_will_win_text:
                 img = self.hud.render_who_will_win(img, frame)
             # Overtake callout: show when a character gets a speed boost
-            for ev in events:
-                if ev.event_type == EventType.SPEED_BOOST and ev.age < 10:
-                    char_name = ev.data.get("target_name", "")
-                    img = self.hud.render_overtake_callout(img, char_name, int(ev.age))
-                    break
+            if self.config.effects.overtake_callout:
+                for ev in events:
+                    if ev.event_type == EventType.SPEED_BOOST and ev.age < 10:
+                        char_name = ev.data.get("target_name", "")
+                        img = self.hud.render_overtake_callout(img, char_name, int(ev.age))
+                        break
         elif state.phase == RacePhase.CELEBRATION:
             img = self.hud.render_race_hud(img, state.characters, frame)
             if state.winner:
@@ -3423,6 +3427,10 @@ class FrameRenderer:
         shake_x, shake_y = state.camera_shake
         if abs(shake_x) > 0.5 or abs(shake_y) > 0.5:
             img = self._apply_camera_shake(img, shake_x, shake_y)
+
+        # 5b. Screen border glow during exciting moments
+        if self.config.effects.screen_border_glow and state.phase == RacePhase.RACING:
+            img = self._render_border_glow(img, frame, race_progress)
 
         # 6. Convert to numpy RGB array
         # Ensure RGBA then convert to RGB
@@ -3464,7 +3472,7 @@ class FrameRenderer:
                 )
             elif char.current_animation == "celebrate":
                 bounce_y = int(
-                    abs(math.sin(frame * 0.3)) * self.ac.bounce_amplitude * 2
+                    abs(math.sin(frame * 0.3)) * self.ac.celebration_jump_height
                 )
 
             # Store screen position for HUD
@@ -3502,10 +3510,11 @@ class FrameRenderer:
                 pass
 
             # Speed trails / afterimages when boosting
-            if char.is_boosting:
-                for trail_i in range(3):
+            if char.is_boosting and self.config.effects.speed_trails:
+                trail_count = self.config.animation.speed_trail_count
+                for trail_i in range(trail_count):
                     trail_offset = (trail_i + 1) * 20
-                    trail_alpha = 80 - trail_i * 25
+                    trail_alpha = max(10, 80 - trail_i * (70 // max(1, trail_count)))
                     trail_sprite = scaled_sprite.copy()
                     trail_arr = np.array(trail_sprite)
                     trail_arr[:, :, 3] = (trail_arr[:, :, 3] * trail_alpha // 255).astype(np.uint8)
@@ -3554,6 +3563,31 @@ class FrameRenderer:
         shifted = Image.new("RGBA", img.size, (0, 0, 0, 255))
         shifted.paste(img, (sx, sy))
         return shifted
+
+    def _render_border_glow(
+        self, img: Image.Image, frame: int, race_progress: float
+    ) -> Image.Image:
+        """Render a pulsing colored border glow around the screen."""
+        if race_progress < 0.5:
+            return img
+        w, h = img.size
+        # Intensity increases near finish
+        intensity = min(1.0, (race_progress - 0.5) * 2.0)
+        hue = (frame * 0.02) % 1.0
+        rc, gc, bc = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0)]
+        glow_alpha = int(intensity * 60 * abs(math.sin(frame * 0.1)))
+        if glow_alpha < 5:
+            return img
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        border = 20
+        # Draw thick border
+        for b in range(border, 0, -4):
+            a = int(glow_alpha * b / border)
+            ov_draw.rectangle([border - b, border - b, w - (border - b), h - (border - b)],
+                             outline=(rc, gc, bc, a), width=4)
+        return Image.alpha_composite(img, overlay)
+
 
 print("✅ Frame renderer loaded.")
 
