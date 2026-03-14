@@ -119,8 +119,8 @@ class RaceConfig:
     """Configuration for race simulation parameters."""
     num_characters: int = 10
     race_duration_seconds: float = 8.0
-    min_race_duration: float = 6.0
-    max_race_duration: float = 12.0
+    min_race_duration: float = 12.0
+    max_race_duration: float = 13.0
     track_start_x: float = 0.05
     track_end_x: float = 0.95
     base_speed: float = 0.008
@@ -130,8 +130,8 @@ class RaceConfig:
     burst_speed_multiplier: float = 2.5
     burst_duration_frames: int = 15
     lane_count: int = 10
-    countdown_duration: float = 2.0
-    winner_celebration_duration: float = 3.0
+    countdown_duration: float = 3.0
+    winner_celebration_duration: float = 5.0
     photo_finish_threshold: float = 0.02
 
 @dataclass
@@ -3108,9 +3108,9 @@ class HUDRenderer:
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
         """Get or create a font at the given size."""
+        size = max(size, 24)
         if size not in self.font_cache:
             try:
-                # Try to find a system font
                 for font_path in [
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -3119,11 +3119,28 @@ class HUDRenderer:
                     if os.path.exists(font_path):
                         self.font_cache[size] = ImageFont.truetype(font_path, size)
                         return self.font_cache[size]
-                # Fallback
                 self.font_cache[size] = ImageFont.load_default()
             except Exception:
                 self.font_cache[size] = ImageFont.load_default()
         return self.font_cache[size]
+
+    def _draw_outlined_text(
+        self, draw: ImageDraw.Draw, position: Tuple[int, int], text: str,
+        font: ImageFont.FreeTypeFont,
+        fill_color,
+        outline_color=(0, 0, 0),
+        outline_width: int = 3,
+    ):
+        """Draw text with clean outline — outline first, fill on top.
+
+        fill_color and outline_color may be RGB or RGBA tuples.
+        """
+        x, y = position
+        for dx in range(-outline_width, outline_width + 1):
+            for dy in range(-outline_width, outline_width + 1):
+                if dx * dx + dy * dy <= outline_width * outline_width:
+                    draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
+        draw.text((x, y), text, font=font, fill=fill_color)
 
     def render_countdown(
         self, img: Image.Image, countdown_value: int, phase_progress: float
@@ -3142,36 +3159,16 @@ class HUDRenderer:
         font_size = int(180 * pulse)
         font = self._get_font(font_size)
 
-        # Get text bounding box
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
         tx = (w - tw) // 2
-        ty = (h // 2 - th) // 2  # Upper half
+        ty = (h // 2 - th) // 2
 
-        # Glow effect
-        for offset in range(6, 0, -2):
-            glow_alpha = int(40 * (1 - offset / 6))
-            glow_color = (255, 200, 0, glow_alpha) if countdown_value > 0 \
-                else (0, 255, 100, glow_alpha)
-            # Draw glow by drawing text multiple times with offsets
-            for dx, dy in [(-offset, 0), (offset, 0), (0, -offset), (0, offset)]:
-                draw.text((tx + dx, ty + dy), text, font=font,
-                          fill=glow_color[:3])
-
-        # Shadow
-        draw.text((tx + 4, ty + 4), text, font=font, fill=(0, 0, 0))
-
-        # Main text
         color = (255, 220, 50) if countdown_value > 0 else (50, 255, 100)
-        draw.text((tx, ty), text, font=font, fill=color)
-
-        # Outline
-        for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2),
-                        (-2, -2), (2, -2), (-2, 2), (2, 2)]:
-            draw.text((tx + dx, ty + dy), text, font=font, fill=(0, 0, 0))
-        draw.text((tx, ty), text, font=font, fill=color)
-
+        self._draw_outlined_text(draw, (tx, ty), text, font,
+                                 fill_color=color, outline_color=(0, 0, 0),
+                                 outline_width=4)
         return img
 
     def render_race_hud(
@@ -3181,14 +3178,12 @@ class HUDRenderer:
         draw = ImageDraw.Draw(img)
         w, h = img.size
 
-        # --- Position leaderboard (top-left) ---
         sorted_chars = sorted(characters, key=lambda c: c.position, reverse=True)
         panel_x = 20
         panel_y = 50
         panel_w = 320
         panel_h = 48 * len(characters) + 20
 
-        # Semi-transparent panel background
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         overlay_draw.rounded_rectangle(
@@ -3199,27 +3194,23 @@ class HUDRenderer:
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
-        font_small = self._get_font(28)
-        font_pos = self._get_font(32)
+        font_name = self._get_font(26)
+        font_pos = self._get_font(30)
 
         for i, char in enumerate(sorted_chars):
             cy = panel_y + 10 + i * 48
 
-            # Position number
             pos_text = f"#{i + 1}"
-            draw.text((panel_x + 10, cy), pos_text, font=font_pos,
-                      fill=(255, 220, 50))
+            self._draw_outlined_text(draw, (panel_x + 10, cy), pos_text, font_pos,
+                                     fill_color=(255, 220, 50), outline_width=2)
 
-            # Character color dot
             body_color = char.template.get("body_color", (200, 200, 200))
             draw.ellipse([panel_x + 60, cy + 4, panel_x + 76, cy + 20],
                          fill=body_color)
 
-            # Character name
-            draw.text((panel_x + 85, cy + 2), char.name, font=font_small,
-                      fill=(255, 255, 255))
+            self._draw_outlined_text(draw, (panel_x + 85, cy + 2), char.name, font_name,
+                                     fill_color=(255, 255, 255), outline_width=2)
 
-            # Mini progress bar
             bar_x = panel_x + 85
             bar_y = cy + 26
             bar_w = 180
@@ -3231,13 +3222,12 @@ class HUDRenderer:
                 draw.rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h],
                                fill=body_color)
 
-        # --- "RACE" title ---
         title_font = self._get_font(44)
         race_text = "🏁 BRAINROT RACE 🏁"
         bbox = draw.textbbox((0, 0), race_text, font=title_font)
         tw = bbox[2] - bbox[0]
-        draw.text(((w - tw) // 2, 5), race_text, font=title_font,
-                  fill=(255, 255, 255))
+        self._draw_outlined_text(draw, ((w - tw) // 2, 5), race_text, title_font,
+                                 fill_color=(255, 255, 255), outline_width=3)
 
         return img
 
@@ -3246,32 +3236,26 @@ class HUDRenderer:
         celebration_progress: float
     ) -> Image.Image:
         """Render winner announcement overlay."""
-        draw = ImageDraw.Draw(img)
         w, h = img.size
 
-        # Semi-transparent overlay
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
-
-        # Fade in
         fade_alpha = int(MathUtils.ease_in_out(min(1.0, celebration_progress * 3)) * 160)
         overlay_draw.rectangle([0, 0, w, h], fill=(0, 0, 0, fade_alpha))
         img = Image.alpha_composite(img, overlay)
-        draw = ImageDraw.Draw(img)
 
-        # Rainbow color flash during celebration
         if celebration_progress > 0.15:
             hue = (celebration_progress * 3.0) % 1.0
             rc, gc, bc = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 0.8, 1.0)]
             flash_alpha = int(30 * abs(math.sin(celebration_progress * 10)))
             rainbow_overlay = Image.new("RGBA", img.size, (rc, gc, bc, flash_alpha))
             img = Image.alpha_composite(img, rainbow_overlay)
-            draw = ImageDraw.Draw(img)
+
+        draw = ImageDraw.Draw(img)
 
         if celebration_progress < 0.1:
             return img
 
-        # "WINNER" text
         winner_font = self._get_font(100)
         text_progress = MathUtils.ease_out_bounce(
             min(1.0, (celebration_progress - 0.1) * 3)
@@ -3285,23 +3269,16 @@ class HUDRenderer:
         target_y = h // 6
         current_y = int(MathUtils.lerp(-100, target_y, text_progress))
 
-        # Text glow
-        glow_size = int(abs(math.sin(celebration_progress * 8)) * 4) + 2
-        for offset in range(glow_size, 0, -1):
-            alpha_frac = 1 - offset / glow_size
-            glow_c = (255, 200, 0)
-            for dx, dy in [(-offset, 0), (offset, 0), (0, -offset), (0, offset)]:
-                draw.text(((w - tw) // 2 + dx, current_y + dy),
-                          winner_text, font=winner_font, fill=glow_c)
+        # Clean soft glow: 4 directional offsets only
+        glow_c = (255, 220, 80)
+        for dx, dy in [(-4, 0), (4, 0), (0, -4), (0, 4)]:
+            draw.text(((w - tw) // 2 + dx, current_y + dy),
+                      winner_text, font=winner_font, fill=glow_c)
 
-        # Shadow
-        draw.text(((w - tw) // 2 + 4, current_y + 4),
-                  winner_text, font=winner_font, fill=(0, 0, 0))
-        # Main
-        draw.text(((w - tw) // 2, current_y),
-                  winner_text, font=winner_font, fill=(255, 220, 50))
+        self._draw_outlined_text(draw, ((w - tw) // 2, current_y), winner_text,
+                                 winner_font, fill_color=(255, 220, 50),
+                                 outline_color=(0, 0, 0), outline_width=5)
 
-        # Winner name
         if celebration_progress > 0.3:
             name_progress = MathUtils.ease_elastic(
                 min(1.0, (celebration_progress - 0.3) * 3)
@@ -3310,18 +3287,12 @@ class HUDRenderer:
             name_text = winner.name
             bbox2 = draw.textbbox((0, 0), name_text, font=name_font)
             nw = bbox2[2] - bbox2[0]
-
             name_y = current_y + th + 30
-            name_scale = name_progress
-
             body_color = winner.template.get("body_color", (255, 255, 255))
-            # Shadow
-            draw.text(((w - nw) // 2 + 3, int(name_y) + 3),
-                      name_text, font=name_font, fill=(0, 0, 0))
-            draw.text(((w - nw) // 2, int(name_y)),
-                      name_text, font=name_font, fill=body_color)
+            self._draw_outlined_text(draw, ((w - nw) // 2, int(name_y)), name_text,
+                                     name_font, fill_color=body_color,
+                                     outline_color=(0, 0, 0), outline_width=5)
 
-        # Confetti during celebration
         if celebration_progress > 0.2:
             self._draw_celebration_confetti(draw, w, h, celebration_progress,
                                             self.config.effects.confetti_count)
@@ -3333,15 +3304,13 @@ class HUDRenderer:
         confetti_count: int = 300
     ):
         """Draw celebratory confetti particles."""
-        rng = random.Random(42)  # Deterministic for consistent confetti
+        rng = random.Random(42)
         num_confetti = int(progress * confetti_count)
         for i in range(num_confetti):
             cx = rng.randint(0, w)
             cy = int((progress * 2 + rng.random()) * h * 0.4) % h
             size = rng.randint(8, 20)
             color = ColorUtils.random_vibrant()
-            rot = rng.uniform(0, 360)
-            # Simple rectangle confetti
             draw.rectangle([cx, cy, cx + size, cy + size // 2],
                            fill=color + (200,))
 
@@ -3351,7 +3320,7 @@ class HUDRenderer:
     ) -> Image.Image:
         """Render character name tags above their sprites."""
         draw = ImageDraw.Draw(img)
-        font = self._get_font(18)
+        font = self._get_font(24)
 
         for char in characters:
             if char.screen_x == 0 and char.screen_y == 0:
@@ -3366,17 +3335,17 @@ class HUDRenderer:
 
             body_color = char.template.get("body_color", (200, 200, 200))
 
-            # Background pill
             pad = 6
             draw.rounded_rectangle(
                 [tag_x - pad, tag_y - pad // 2,
-                 tag_x + tw + pad, tag_y + 20 + pad // 2],
+                 tag_x + tw + pad, tag_y + 24 + pad // 2],
                 radius=8,
                 fill=(0, 0, 0, 160),
                 outline=body_color + (200,),
                 width=1,
             )
-            draw.text((tag_x, tag_y), name, font=font, fill=(255, 255, 255))
+            self._draw_outlined_text(draw, (tag_x, tag_y), name, font,
+                                     fill_color=(255, 255, 255), outline_width=2)
 
         return img
 
@@ -3387,7 +3356,6 @@ class HUDRenderer:
         font = self._get_font(32)
         text = "👆 SUBSCRIBE! 👆"
 
-        # Pulsing alpha
         alpha_pulse = int(180 + 60 * abs(math.sin(frame * 0.08)))
 
         bbox = draw.textbbox((0, 0), text, font=font)
@@ -3395,7 +3363,6 @@ class HUDRenderer:
         tx = (w - tw) // 2
         ty = h - 80
 
-        # Background
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ov_draw = ImageDraw.Draw(overlay)
         pad = 10
@@ -3407,10 +3374,8 @@ class HUDRenderer:
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Shadow
-        draw.text((tx + 2, ty + 2), text, font=font, fill=(0, 0, 0))
-        # Main text
-        draw.text((tx, ty), text, font=font, fill=(255, 255, 255))
+        self._draw_outlined_text(draw, (tx, ty), text, font,
+                                 fill_color=(255, 255, 255), outline_width=2)
         return img
 
     def render_progress_bar(self, img: Image.Image, characters: List[Character]) -> Image.Image:
@@ -3418,69 +3383,140 @@ class HUDRenderer:
         draw = ImageDraw.Draw(img)
         w, h = img.size
 
-        bar_x = 60
-        bar_y = h - 130
-        bar_w = w - 120
-        bar_h = 18
+        bar_x = 20
+        bar_y = h - 60
+        bar_w = w - 40
+        bar_h = 20
 
-        # Background
         draw.rounded_rectangle([bar_x - 2, bar_y - 2, bar_x + bar_w + 2, bar_y + bar_h + 2],
-                               radius=10, fill=(0, 0, 0, 160))
+                               radius=12, fill=(0, 0, 0, 180))
         draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h],
-                               radius=8, fill=(60, 60, 60, 200))
+                               radius=10, fill=(40, 40, 40, 220))
 
-        # Leader progress
         if characters:
             leader = max(characters, key=lambda c: c.position)
             progress = min(1.0, leader.position)
             if progress > 0:
-                # Rainbow gradient fill
-                for i in range(int(bar_w * progress)):
+                fill_w = int(bar_w * progress)
+                for i in range(fill_w):
                     t = i / max(1, bar_w)
                     r = int(255 * abs(math.sin(t * math.pi)))
                     g = int(200 * abs(math.sin(t * math.pi + 2.09)))
                     b = int(255 * abs(math.sin(t * math.pi + 4.19)))
-                    draw.line([(bar_x + i, bar_y), (bar_x + i, bar_y + bar_h)],
+                    draw.line([(bar_x + i, bar_y + 1), (bar_x + i, bar_y + bar_h - 1)],
                              fill=(r, g, b, 220))
 
-        # Finish flag icon
-        draw.text((bar_x + bar_w + 5, bar_y - 4), "🏁", font=self._get_font(22), fill=(255, 255, 255))
-        draw.text((bar_x - 30, bar_y - 4), "🚀", font=self._get_font(22), fill=(255, 255, 255))
+        draw.text((bar_x + bar_w + 5, bar_y - 4), "🏁",
+                  font=self._get_font(24), fill=(255, 255, 255))
+        draw.text((bar_x - 30, bar_y - 4), "🚀",
+                  font=self._get_font(24), fill=(255, 255, 255))
 
         return img
 
-    def render_who_will_win(self, img: Image.Image, frame: int) -> Image.Image:
-        """Render dramatic WHO WILL WIN text."""
-        draw = ImageDraw.Draw(img)
+    def render_who_will_win(
+        self, img: Image.Image, frame: int, who_will_win_frame: int
+    ) -> Image.Image:
+        """Render dramatic WHO WILL WIN?! 🤔 text with scale-in bounce and fade-out."""
         w, h = img.size
+        display_frames = 50  # ~1.67s at 30fps
+        local_frame = frame - who_will_win_frame
+        if local_frame < 0 or local_frame > display_frames:
+            return img
 
-        font = self._get_font(72)
-        text = "WHO WILL WIN?!"
+        font = self._get_font(96)
+        text = "WHO WILL WIN?! 🤔"
+
+        # Scale-in bounce for first 15 frames, then fade out in last 15
+        scale_progress = min(1.0, local_frame / 15.0)
+        scale = MathUtils.ease_out_bounce(scale_progress)
+        fade_out = 1.0 if local_frame < display_frames - 15 else \
+            1.0 - (local_frame - (display_frames - 15)) / 15.0
+        alpha = int(255 * fade_out)
+
+        # Screen dim overlay
+        dim_overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        dim_draw = ImageDraw.Draw(dim_overlay)
+        dim_draw.rectangle([0, 0, w, h], fill=(0, 0, 0, int(80 * fade_out)))
+        img = Image.alpha_composite(img, dim_overlay)
+        draw = ImageDraw.Draw(img)
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = int((bbox[2] - bbox[0]) * scale)
+        th = int((bbox[3] - bbox[1]) * scale)
+        tx = (w - tw) // 2
+        ty = int(h * 0.18)
+
+        fill_color = (255, 224, 0)
+        outline_color = (0, 0, 0)
+        outline_width = 4
+
+        # Draw outline then fill using 8-direction offsets
+        for dx in range(-outline_width, outline_width + 1):
+            for dy in range(-outline_width, outline_width + 1):
+                if dx * dx + dy * dy <= outline_width * outline_width:
+                    draw.text(
+                        (tx + int(dx * scale), ty + int(dy * scale)),
+                        text, font=font,
+                        fill=outline_color + (alpha,)
+                    )
+        draw.text((tx, ty), text, font=font, fill=fill_color + (alpha,))
+
+        return img
+
+    def render_go_callout(self, img: Image.Image, frame: int) -> Image.Image:
+        """Render GO! GO! GO! 🏃 callout at start of race (first ~30 frames)."""
+        display_frames = 30
+        if frame > display_frames:
+            return img
+
+        w, h = img.size
+        fade = max(0.0, 1.0 - frame / display_frames)
+        alpha = int(255 * fade)
+
+        draw = ImageDraw.Draw(img)
+        font = self._get_font(80)
+        text = "GO! GO! GO! 🏃"
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         tx = (w - tw) // 2
-        ty = h // 3
+        ty = int(h * 0.35)
 
-        # Shake effect
-        shake_x = int(math.sin(frame * 1.5) * 4)
-        shake_y = int(math.cos(frame * 2.0) * 3)
+        self._draw_outlined_text(
+            draw, (tx, ty), text, font,
+            fill_color=(50, 255, 100, alpha),
+            outline_color=(0, 0, 0, alpha),
+            outline_width=3,
+        )
+        return img
 
-        # Rainbow color cycle
-        hue = (frame * 0.03) % 1.0
-        r, g, b = [int(c * 255) for c in colorsys.hsv_to_rgb(hue, 1.0, 1.0)]
+    def render_photo_finish(self, img: Image.Image, frame: int) -> Image.Image:
+        """Render PHOTO FINISH! 📸 callout."""
+        w, h = img.size
+        draw = ImageDraw.Draw(img)
+        font = self._get_font(72)
+        text = "PHOTO FINISH! 📸"
 
-        # Glow
-        for offset in [6, 4, 2]:
-            for dx, dy in [(-offset, 0), (offset, 0), (0, -offset), (0, offset)]:
-                draw.text((tx + dx + shake_x, ty + dy + shake_y), text, font=font,
-                         fill=(r, g, b, 60))
+        flash = abs(math.sin(frame * 0.5))
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        tx = (w - tw) // 2
+        ty = int(h * 0.45)
 
-        # Shadow
-        draw.text((tx + 4 + shake_x, ty + 4 + shake_y), text, font=font, fill=(0, 0, 0))
-        # Main
-        draw.text((tx + shake_x, ty + shake_y), text, font=font, fill=(r, g, b))
+        # Flash background
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        pad = 14
+        ov_draw.rounded_rectangle(
+            [tx - pad, ty - pad // 2, tx + tw + pad, ty + 80],
+            radius=14, fill=(255, 255, 255, int(200 * flash))
+        )
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
+        self._draw_outlined_text(draw, (tx, ty), text, font,
+                                 fill_color=(10, 10, 10), outline_color=(255, 255, 255),
+                                 outline_width=3)
         return img
 
     def render_overtake_callout(self, img: Image.Image, char_name: str, frame: int) -> Image.Image:
@@ -3489,26 +3525,25 @@ class HUDRenderer:
         w, h = img.size
 
         font = self._get_font(56)
-        text = f"🔄 OVERTAKE!"
+        text = "🔄 OVERTAKE!"
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         tx = (w - tw) // 2
 
-        # Slide in from top
         slide_progress = min(1.0, frame * 0.15)
         ty = int(MathUtils.lerp(-100, h // 4, slide_progress))
 
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ov_draw = ImageDraw.Draw(overlay)
         pad = 12
-        ov_draw.rounded_rectangle([tx - pad, ty - 5, tx + tw + pad, ty + 55],
+        ov_draw.rounded_rectangle([tx - pad, ty - 5, tx + tw + pad, ty + 65],
                                   radius=15, fill=(255, 150, 0, 200))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
-        draw.text((tx + 2, ty + 2), text, font=font, fill=(0, 0, 0))
-        draw.text((tx, ty), text, font=font, fill=(255, 255, 255))
+        self._draw_outlined_text(draw, (tx, ty), text, font,
+                                 fill_color=(255, 255, 255), outline_width=3)
         return img
 
 print("✅ HUD system loaded.")
@@ -3624,15 +3659,19 @@ class AudioManager:
         self.temp_dir = FileUtils.ensure_dir(os.path.join(config.output_dir, "temp_audio"))
 
     def generate_countdown_beep(self, frequency: float = 800, duration_ms: int = 200) -> np.ndarray:
-        """Generate a simple beep sound as numpy array."""
+        """Generate a musical beep sound (chord) as numpy array."""
         sample_rate = 44100
-        t = np.linspace(0, duration_ms / 1000.0, int(sample_rate * duration_ms / 1000.0))
-        wave = np.sin(2 * np.pi * frequency * t) * 0.5
-        # Envelope
-        env = np.ones_like(wave)
-        fade_samples = int(len(wave) * 0.1)
-        env[:fade_samples] = np.linspace(0, 1, fade_samples)
-        env[-fade_samples:] = np.linspace(1, 0, fade_samples)
+        n = int(sample_rate * duration_ms / 1000.0)
+        t = np.linspace(0, duration_ms / 1000.0, n, dtype=np.float64)
+        # Major chord: root + major third
+        third = frequency * 1.25  # approx major third
+        wave = (np.sin(2 * np.pi * frequency * t) * 0.4 +
+                np.sin(2 * np.pi * third * t) * 0.3)
+        fade = int(n * 0.1)
+        env = np.ones(n, dtype=np.float64)
+        if fade > 0:
+            env[:fade] = np.linspace(0.0, 1.0, fade)
+            env[-fade:] = np.linspace(1.0, 0.0, fade)
         return (wave * env * 32767).astype(np.int16)
 
     def generate_race_audio(
@@ -3646,76 +3685,190 @@ class AudioManager:
         sample_rate = 44100
         total_samples = int(total_duration * sample_rate)
         audio = np.zeros(total_samples, dtype=np.float64)
+        rng_audio = np.random.default_rng(1234)
 
-        # --- Countdown beeps ---
-        beep_times = [
-            countdown_duration * 0.0,
-            countdown_duration * 0.25,
-            countdown_duration * 0.50,
-            countdown_duration * 0.75,
-        ]
-        beep_freqs = [600, 600, 600, 1000]
+        # --- Countdown beeps — musical major chord beeps ---
+        # Beeps at 0, 1, 2 seconds; GO! at countdown end
+        beep_times = [0.0, 1.0, 2.0, countdown_duration - 0.15]
+        beep_freqs = [261, 261, 261, 523]   # C4, C4, C4, C5
+        beep_thirds = [329, 329, 329, 659]  # E4, E4, E4, E5
+        beep_fifths = [None, None, None, 784]  # G5 only on GO!
         beep_durations = [150, 150, 150, 300]
 
-        for bt, bf, bd in zip(beep_times, beep_freqs, beep_durations):
-            beep = self.generate_countdown_beep(bf, bd)
-            start_sample = int(bt * sample_rate)
-            end_sample = min(start_sample + len(beep), total_samples)
-            beep_float = beep[:end_sample - start_sample].astype(np.float64) / 32767.0
-            audio[start_sample:end_sample] += beep_float * 0.6
+        for bt, bf, bth, bfi, bd in zip(beep_times, beep_freqs, beep_thirds, beep_fifths, beep_durations):
+            n = int(sample_rate * bd / 1000.0)
+            t_b = np.linspace(0, bd / 1000.0, n, dtype=np.float64)
+            fade = max(1, int(n * 0.1))
+            env = np.ones(n, dtype=np.float64)
+            env[:fade] = np.linspace(0.0, 1.0, fade)
+            env[-fade:] = np.linspace(1.0, 0.0, fade)
+            wave_b = (np.sin(2 * np.pi * bf * t_b) * 0.35 +
+                      np.sin(2 * np.pi * bth * t_b) * 0.25)
+            if bfi is not None:
+                wave_b += np.sin(2 * np.pi * bfi * t_b) * 0.20
+            wave_b *= env
+            start_s = int(bt * sample_rate)
+            end_s = min(start_s + n, total_samples)
+            actual = end_s - start_s
+            if actual > 0:
+                audio[start_s:end_s] += wave_b[:actual] * 0.55
 
         # --- Background rhythm during race ---
         race_start_sample = int(countdown_duration * sample_rate)
         race_end_sample = int((countdown_duration + race_duration) * sample_rate)
         race_end_sample = min(race_end_sample, total_samples)
+        race_len = race_end_sample - race_start_sample
+        if race_len <= 0:
+            race_len = 1
 
-        bpm = 175
+        bpm = 150
         beat_interval = 60.0 / bpm
-        beat_sample_interval = int(beat_interval * sample_rate)
+        beat_samples = int(beat_interval * sample_rate)
+        half_beat = beat_samples // 2
+        num_beats = int(race_duration / beat_interval) + 1
 
-        t_array = np.arange(race_end_sample - race_start_sample) / sample_rate
+        # Kick drum — punchy 60Hz with fast decay
+        kick_len = int(0.12 * sample_rate)
+        kick_t = np.arange(kick_len, dtype=np.float64) / sample_rate
+        kick_base = np.sin(2 * np.pi * 60 * kick_t) * np.exp(-kick_t * 30) * 0.35
 
-        # Bass drum (low frequency pulse)
-        for i in range(int(race_duration / beat_interval)):
-            beat_start = i * beat_sample_interval
-            if beat_start + 4000 < len(t_array):
-                kick_t = np.arange(4000) / sample_rate
-                kick = np.sin(2 * np.pi * 80 * kick_t) * np.exp(-kick_t * 20) * 0.3
-                audio[race_start_sample + beat_start:
-                      race_start_sample + beat_start + len(kick)] += kick
+        # Snare/clap — bandpass-feel noise burst on beats 2 and 4
+        snare_len = int(0.06 * sample_rate)
+        snare_t = np.arange(snare_len, dtype=np.float64) / sample_rate
+        snare_noise = rng_audio.standard_normal(snare_len)
+        snare_env = np.exp(-snare_t * 40) * np.abs(np.sin(2 * np.pi * 180 * snare_t))
+        snare_base = snare_noise * snare_env * 0.18
 
-        # Hi-hat (noise burst on offbeats)
-        half_beat = beat_sample_interval // 2
-        for i in range(int(race_duration / beat_interval) * 2):
-            hh_start = i * half_beat
-            if hh_start + 1000 < len(t_array):
-                hh_t = np.arange(1000) / sample_rate
-                hh = np.random.randn(1000) * np.exp(-hh_t * 40) * 0.08
-                audio[race_start_sample + hh_start:
-                      race_start_sample + hh_start + len(hh)] += hh
+        # Hi-hat
+        hh_len = int(0.025 * sample_rate)
+        hh_t = np.arange(hh_len, dtype=np.float64) / sample_rate
+        hh_noise = rng_audio.standard_normal(hh_len)
+        hh_env = np.exp(-hh_t * 80)
+        hh_base = hh_noise * hh_env * 0.04
 
-        # Rising tension synth
-        tension_duration = race_end_sample - race_start_sample
-        if tension_duration > 0:
-            tension_t = np.arange(tension_duration) / sample_rate
-            progress = np.linspace(0, 1, tension_duration)
-            freq = 200 + progress * 400
-            phase = np.cumsum(freq / sample_rate) * 2 * np.pi
-            synth = np.sin(phase) * progress * 0.08
-            audio[race_start_sample:race_end_sample] += synth[:race_end_sample - race_start_sample]
+        for i in range(num_beats):
+            beat_pos = i * beat_samples
+            # Kick on every beat
+            k_start = race_start_sample + beat_pos
+            k_end = min(k_start + kick_len, race_end_sample)
+            actual = k_end - k_start
+            if actual > 0 and k_start < total_samples:
+                audio[k_start:k_end] += kick_base[:actual]
+            # Snare on beats 2 and 4 (index 1, 3 within 4-beat pattern)
+            beat_in_bar = i % 4
+            if beat_in_bar in (1, 3):
+                s_start = race_start_sample + beat_pos
+                s_end = min(s_start + snare_len, race_end_sample)
+                actual = s_end - s_start
+                if actual > 0 and s_start < total_samples:
+                    audio[s_start:s_end] += snare_base[:actual]
+            # Hi-hat on every half-beat
+            for hh_off in (0, half_beat):
+                hh_start = race_start_sample + beat_pos + hh_off
+                hh_end = min(hh_start + hh_len, race_end_sample)
+                actual = hh_end - hh_start
+                if actual > 0 and hh_start < total_samples:
+                    audio[hh_start:hh_end] += hh_base[:actual]
+
+        # Bass line — C3, E3, G3, C3 repeating every 4 beats
+        bass_notes = [131.0, 165.0, 196.0, 131.0]  # C3, E3, G3, C3
+        note_dur = int(beat_samples * 0.8)  # slightly shorter than a beat for punch
+        note_t = np.arange(note_dur, dtype=np.float64) / sample_rate
+        note_env = np.exp(-note_t * 6)
+        for i in range(num_beats):
+            note_freq = bass_notes[i % 4]
+            bass_wave = np.sin(2 * np.pi * note_freq * note_t) * note_env * 0.12
+            b_start = race_start_sample + i * beat_samples
+            b_end = min(b_start + note_dur, race_end_sample)
+            actual = b_end - b_start
+            if actual > 0 and b_start < total_samples:
+                audio[b_start:b_end] += bass_wave[:actual]
+
+        # Melody synth — bright sine + harmonic overtone
+        # 8-note pattern: C5 E5 G5 E5 C5 D5 E5 C5
+        melody_notes = [523.25, 659.25, 784.0, 659.25, 523.25, 587.33, 659.25, 523.25]
+        mel_note_dur = half_beat
+        mel_t = np.arange(mel_note_dur, dtype=np.float64) / sample_rate
+        mel_fade = max(1, mel_note_dur // 8)
+        mel_env = np.ones(mel_note_dur, dtype=np.float64)
+        mel_env[:mel_fade] = np.linspace(0.0, 1.0, mel_fade)
+        mel_env[-mel_fade:] = np.linspace(1.0, 0.0, mel_fade)
+        mel_env *= np.exp(-mel_t * 4)
+        melody_idx = 0
+        for i in range(num_beats * 2):
+            note_freq = melody_notes[melody_idx % len(melody_notes)]
+            # bright wave: fundamental + 3rd harmonic at 0.3
+            mel_wave = (np.sin(2 * np.pi * note_freq * mel_t) +
+                        np.sin(2 * np.pi * note_freq * 3 * mel_t) * 0.3) * mel_env * 0.06
+            m_start = race_start_sample + i * half_beat
+            m_end = min(m_start + mel_note_dur, race_end_sample)
+            actual = m_end - m_start
+            if actual > 0 and m_start < total_samples:
+                audio[m_start:m_end] += mel_wave[:actual]
+            melody_idx += 1
+
+        # Rising tension — last 25% of race: slowly rising sweep 200→800 Hz
+        tension_start_frac = 0.75
+        tension_start_s = race_start_sample + int(race_len * tension_start_frac)
+        tension_end_s = race_end_sample
+        ten_len = tension_end_s - tension_start_s
+        if ten_len > 0:
+            ten_t = np.arange(ten_len, dtype=np.float64) / sample_rate
+            progress = np.linspace(0.0, 1.0, ten_len)
+            freq_sweep = 200.0 + progress * 600.0
+            phase_sweep = np.cumsum(freq_sweep / sample_rate) * 2 * np.pi
+            tension_wave = np.sin(phase_sweep) * progress * 0.04
+            audio[tension_start_s:tension_end_s] += tension_wave
 
         # --- Winner celebration sound ---
         celeb_start = race_end_sample
-        if celeb_start + sample_rate < total_samples:
-            # Triumphant chord
-            celeb_t = np.arange(min(sample_rate, total_samples - celeb_start)) / sample_rate
-            chord = (
-                np.sin(2 * np.pi * 523 * celeb_t) * 0.15 +  # C5
-                np.sin(2 * np.pi * 659 * celeb_t) * 0.12 +  # E5
-                np.sin(2 * np.pi * 784 * celeb_t) * 0.10    # G5
+        celeb_len = total_samples - celeb_start
+        if celeb_len > 0:
+            celeb_t = np.arange(celeb_len, dtype=np.float64) / sample_rate
+            # C major 7th: C4+E4+G4+B4
+            victory_chord = (
+                np.sin(2 * np.pi * 261.63 * celeb_t) * 0.18 +
+                np.sin(2 * np.pi * 329.63 * celeb_t) * 0.15 +
+                np.sin(2 * np.pi * 392.00 * celeb_t) * 0.13 +
+                np.sin(2 * np.pi * 493.88 * celeb_t) * 0.10
             )
-            env = np.exp(-celeb_t * 1.5)
-            audio[celeb_start:celeb_start + len(chord)] += chord * env
+            chord_env = np.exp(-celeb_t * 0.6)  # slow decay over ~2.5s
+            audio[celeb_start:total_samples] += victory_chord * chord_env
+
+            # Sparkle sounds: 3 short high-pitched descending tones
+            sparkle_starts = [0.05, 0.25, 0.55]
+            sparkle_freqs = [(1200, 800), (1000, 600), (1100, 700)]
+            spark_dur = int(0.18 * sample_rate)
+            for sp_t_off, (sp_f1, sp_f2) in zip(sparkle_starts, sparkle_freqs):
+                sp_start = celeb_start + int(sp_t_off * sample_rate)
+                sp_end = min(sp_start + spark_dur, total_samples)
+                sp_actual = sp_end - sp_start
+                if sp_actual > 0:
+                    sp_t = np.arange(sp_actual, dtype=np.float64) / sample_rate
+                    sp_prog = np.linspace(0.0, 1.0, sp_actual)
+                    sp_freq = sp_f1 - sp_prog * (sp_f1 - sp_f2)
+                    sp_phase = np.cumsum(sp_freq / sample_rate) * 2 * np.pi
+                    sp_env = np.exp(-sp_t * 12)
+                    audio[sp_start:sp_end] += np.sin(sp_phase) * sp_env * 0.12
+
+            # Crowd cheer: broadband noise with envelope
+            cheer_len = min(celeb_len, int(1.5 * sample_rate))
+            cheer_noise = rng_audio.standard_normal(cheer_len)
+            cheer_t = np.arange(cheer_len, dtype=np.float64) / sample_rate
+            attack = int(0.08 * sample_rate)
+            cheer_env = np.exp(-cheer_t * 1.2)
+            cheer_env[:attack] = np.linspace(0.0, 1.0, attack)
+            audio[celeb_start:celeb_start + cheer_len] += cheer_noise * cheer_env * 0.06
+
+            # Reverb-like effect: mix delayed copy at 30ms / 0.3 amplitude
+            delay_samples = int(0.030 * sample_rate)
+            reverb_start = celeb_start + delay_samples
+            reverb_end = min(reverb_start + celeb_len, total_samples)
+            reverb_src_end = reverb_end - reverb_start + celeb_start
+            if reverb_end > reverb_start and reverb_src_end <= total_samples:
+                audio[reverb_start:reverb_end] += (
+                    audio[celeb_start:reverb_src_end] * 0.3
+                )
 
         # --- Winner TTS ---
         tts_path = self._generate_tts(winner_name)
@@ -3724,10 +3877,9 @@ class AudioManager:
                 tts_audio_seg = AudioSegment.from_file(tts_path)
                 tts_samples = np.array(tts_audio_seg.get_array_of_samples(), dtype=np.float64)
                 if tts_audio_seg.channels == 2:
-                    tts_samples = tts_samples[::2]  # Take left channel
+                    tts_samples = tts_samples[::2]
                 tts_samples = tts_samples / 32768.0 * 0.8
 
-                # Resample if needed
                 if tts_audio_seg.frame_rate != sample_rate:
                     ratio = sample_rate / tts_audio_seg.frame_rate
                     new_len = int(len(tts_samples) * ratio)
@@ -3745,10 +3897,10 @@ class AudioManager:
             except Exception as e:
                 log.warning(f"Could not load TTS audio: {e}")
 
-        # Normalize
+        # Normalize to 0.80 peak
         max_val = np.max(np.abs(audio))
         if max_val > 0:
-            audio = audio / max_val * 0.85
+            audio = audio / max_val * 0.80
 
         # Convert to int16
         audio_int16 = (audio * 32767).astype(np.int16)
@@ -3800,6 +3952,8 @@ class FrameRenderer:
         self.ac = config.animation
         self.hud = HUDRenderer(config)
         self.event_renderer = EventRenderer(config)
+        self._who_will_win_frame: int = -1
+        self._race_start_frame: int = -1
 
     def render_frame(
         self,
@@ -3827,14 +3981,38 @@ class FrameRenderer:
         if state.phase == RacePhase.COUNTDOWN:
             countdown_progress = frame / max(1, state.total_frames * 0.15)
             img = self.hud.render_countdown(img, state.countdown_value, countdown_progress)
+            self._race_start_frame = -1
+            self._who_will_win_frame = -1
         elif state.phase == RacePhase.RACING:
+            # Track when the race started for GO! GO! GO! callout
+            if self._race_start_frame < 0:
+                self._race_start_frame = frame
+            race_local = frame - self._race_start_frame
+
             img = self.hud.render_race_hud(img, state.characters, frame)
             img = self.hud.render_name_tags(img, state.characters, scene)
             if self.config.scene.subscribe_watermark:
                 img = self.hud.render_subscribe_watermark(img, frame)
             img = self.hud.render_progress_bar(img, state.characters)
-            if race_progress > 0.7 and self.config.effects.who_will_win_text:
-                img = self.hud.render_who_will_win(img, frame)
+
+            # GO! GO! GO! — first ~1s of race
+            img = self.hud.render_go_callout(img, race_local)
+
+            # WHO WILL WIN?! — at 65-75% progress, trigger once
+            if self.config.effects.who_will_win_text:
+                if 0.65 <= race_progress <= 0.85:
+                    if self._who_will_win_frame < 0:
+                        self._who_will_win_frame = frame
+                    img = self.hud.render_who_will_win(img, frame, self._who_will_win_frame)
+
+            # PHOTO FINISH! — top 2 within 0.03 when leader is past 0.85
+            if state.characters:
+                sorted_by_pos = sorted(state.characters, key=lambda c: c.position, reverse=True)
+                if (len(sorted_by_pos) >= 2 and
+                        sorted_by_pos[0].position >= 0.85 and
+                        abs(sorted_by_pos[0].position - sorted_by_pos[1].position) <= 0.03):
+                    img = self.hud.render_photo_finish(img, frame)
+
             # Overtake callout: show when a character gets a speed boost
             if self.config.effects.overtake_callout:
                 for ev in events:
@@ -4395,10 +4573,10 @@ def main():
         race=RaceConfig(
             num_characters=10,
             lane_count=10,
-            min_race_duration=6.0,
-            max_race_duration=10.0,
-            countdown_duration=2.0,
-            winner_celebration_duration=3.0,
+            min_race_duration=12.0,
+            max_race_duration=13.0,
+            countdown_duration=3.0,
+            winner_celebration_duration=5.0,
             base_speed=0.006,
             speed_variance=0.004,
         ),
