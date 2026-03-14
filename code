@@ -60,6 +60,7 @@ from enum import Enum, auto
 from typing import (
     List, Dict, Tuple, Optional, Any, Callable, Union, Set
 )
+import gc
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -215,6 +216,21 @@ class MasterConfig:
     seed: Optional[int] = None
     batch_size: int = 1
     log_level: str = "INFO"
+    # Low-memory mode: use 720x1280, smaller cache, fewer particles.
+    # CRITICAL: keep True for Google Colab Free (12 GB RAM).
+    low_memory_mode: bool = True
+
+    def __post_init__(self):
+        """Apply low-memory overrides so the default is Colab-safe."""
+        if self.low_memory_mode:
+            self.video.width = 720
+            self.video.height = 1280
+            self.scene.particle_count = min(self.scene.particle_count, 60)
+
+    @property
+    def frame_cache_size(self) -> int:
+        """Max number of rendered frames to keep in the frame cache."""
+        return 3 if self.low_memory_mode else 5
 
     def randomize_seed(self):
         """Generate a new random seed."""
@@ -1692,6 +1708,44 @@ class RaceState:
     countdown_start_frame: int = 0
     race_start_frame: int = 0
     race_end_frame: int = 0
+
+
+@dataclass
+class FrameSnapshot:
+    """
+    Lightweight snapshot of race state for a single frame.
+    Stores ONLY numeric/string data — NO PIL Images, no Character objects.
+    This lets us pre-simulate without deep-copying heavy sprite data,
+    keeping RAM usage low enough for Google Colab Free (12 GB).
+    """
+    phase: RacePhase
+    frame_number: int
+    elapsed_time: float
+    total_frames: int
+    countdown_value: int
+    camera_shake: Tuple[float, float]
+    camera_zoom: float
+    celebration_timer: float
+    winner_index: int           # index into characters list; -1 = no winner
+    race_started: bool
+    race_ended: bool
+    finish_line_reached: bool
+    global_speed_modifier: float
+    race_start_frame: int
+    race_end_frame: int
+    # Per-character parallel arrays (same order as characters list)
+    char_positions: List[float]
+    char_velocities: List[float]
+    char_speeds: List[float]
+    char_animations: List[str]
+    char_anim_frames: List[int]
+    char_anim_timers: List[float]
+    char_is_boosting: List[bool]
+    char_boost_frames_left: List[int]
+    char_finished: List[bool]
+    char_placements: List[int]
+    char_stamina: List[float]
+    char_finish_times: List[float]
 
 
 class RaceSimulator:
@@ -4315,6 +4369,7 @@ class RaceOrchestrator:
         characters = char_factory.create_characters(
             self.config.race.num_characters, race_rng
         )
+        gc.collect()   # free any temporary sprite-generation memory
 
         # 2. Create scene
         log.info("🎨 Creating scene...")
@@ -4333,30 +4388,73 @@ class RaceOrchestrator:
         log.info("🖼️ Initializing frame renderer...")
         frame_renderer = FrameRenderer(self.config)
 
-        # 6. Pre-simulate to determine all states
+        # 6. Pre-simulate — store ONLY lightweight FrameSnapshot objects.
+        # This avoids deep-copying Character objects (which carry PIL Image
+        # sprite sheets) for every frame, which would use gigabytes of RAM.
         log.info("🔄 Pre-simulating race...")
-        all_states: List[RaceState] = []
+        all_snapshots: List[FrameSnapshot] = []
         all_events: List[List[GameEvent]] = []
 
         sim_state = simulator.state
         total_frames = sim_state.total_frames
 
+        def _snapshot_from_state(state: RaceState) -> FrameSnapshot:
+            """Build a lightweight FrameSnapshot from the current RaceState."""
+            chars = state.characters
+            winner_idx = -1
+            if state.winner is not None:
+                try:
+                    winner_idx = chars.index(state.winner)
+                except ValueError:
+                    winner_idx = -1
+            return FrameSnapshot(
+                phase=state.phase,
+                frame_number=state.frame_number,
+                elapsed_time=state.elapsed_time,
+                total_frames=state.total_frames,
+                countdown_value=state.countdown_value,
+                camera_shake=state.camera_shake,
+                camera_zoom=state.camera_zoom,
+                celebration_timer=state.celebration_timer,
+                winner_index=winner_idx,
+                race_started=state.race_started,
+                race_ended=state.race_ended,
+                finish_line_reached=state.finish_line_reached,
+                global_speed_modifier=state.global_speed_modifier,
+                race_start_frame=state.race_start_frame,
+                race_end_frame=state.race_end_frame,
+                char_positions=[c.position for c in chars],
+                char_velocities=[c.velocity for c in chars],
+                char_speeds=[c.current_speed for c in chars],
+                char_animations=[c.current_animation for c in chars],
+                char_anim_frames=[c.animation_frame for c in chars],
+                char_anim_timers=[c.animation_timer for c in chars],
+                char_is_boosting=[c.is_boosting for c in chars],
+                char_boost_frames_left=[c.boost_frames_left for c in chars],
+                char_finished=[c.finished for c in chars],
+                char_placements=[c.placement for c in chars],
+                char_stamina=[c.stamina_current for c in chars],
+                char_finish_times=[c.finish_time for c in chars],
+            )
+
         for frame_idx in range(total_frames):
             state = simulator.simulate_frame()
             events = event_engine.update(state)
-            all_states.append(deepcopy(state))
+            all_snapshots.append(_snapshot_from_state(state))
             all_events.append(list(events))
 
             if simulator.is_finished():
-                # Pad remaining frames
+                # Pad remaining frames with the final snapshot (very cheap)
+                final_snap = _snapshot_from_state(state)
                 for _ in range(frame_idx + 1, total_frames):
-                    all_states.append(deepcopy(state))
+                    all_snapshots.append(final_snap)
                     all_events.append([])
                 break
 
-        actual_frames = len(all_states)
+        actual_frames = len(all_snapshots)
         duration = actual_frames / self.config.video.fps
         log.info(f"  Simulation complete: {actual_frames} frames, {duration:.1f}s")
+        gc.collect()   # free any residual simulation memory
 
         # 7. Generate audio
         log.info("🔊 Generating audio...")
@@ -4371,8 +4469,26 @@ class RaceOrchestrator:
         # 8. Create frame generator for video encoding
         log.info("🎬 Preparing video encoding...")
 
-        # Frame cache for the frame generator
+        # Small frame cache — large values waste RAM (each 720p frame ~2.5 MB)
         frame_cache: Dict[int, np.ndarray] = {}
+        cache_limit = self.config.frame_cache_size
+
+        def _apply_snapshot(snap: FrameSnapshot) -> None:
+            """Write a FrameSnapshot's per-character data back to the
+            shared Character objects so the renderer sees the right state."""
+            for i, char in enumerate(characters):
+                char.position          = snap.char_positions[i]
+                char.velocity          = snap.char_velocities[i]
+                char.current_speed     = snap.char_speeds[i]
+                char.current_animation = snap.char_animations[i]
+                char.animation_frame   = snap.char_anim_frames[i]
+                char.animation_timer   = snap.char_anim_timers[i]
+                char.is_boosting       = snap.char_is_boosting[i]
+                char.boost_frames_left = snap.char_boost_frames_left[i]
+                char.finished          = snap.char_finished[i]
+                char.placement         = snap.char_placements[i]
+                char.stamina_current   = snap.char_stamina[i]
+                char.finish_time       = snap.char_finish_times[i]
 
         def make_frame(t: float) -> np.ndarray:
             """Generate frame for time t."""
@@ -4382,18 +4498,46 @@ class RaceOrchestrator:
             if frame_idx in frame_cache:
                 return frame_cache[frame_idx]
 
-            state = all_states[frame_idx]
+            snap = all_snapshots[frame_idx]
             events = all_events[frame_idx]
 
-            rendered = frame_renderer.render_frame(
-                scene, state, events, frame_idx
+            # Restore character state for this frame (no deepcopy needed)
+            _apply_snapshot(snap)
+
+            # Build a minimal RaceState for the renderer (no Character copying)
+            render_state = RaceState(
+                phase=snap.phase,
+                frame_number=snap.frame_number,
+                elapsed_time=snap.elapsed_time,
+                total_frames=snap.total_frames,
+                countdown_value=snap.countdown_value,
+                camera_shake=snap.camera_shake,
+                camera_zoom=snap.camera_zoom,
+                celebration_timer=snap.celebration_timer,
+                race_started=snap.race_started,
+                race_ended=snap.race_ended,
+                finish_line_reached=snap.finish_line_reached,
+                global_speed_modifier=snap.global_speed_modifier,
+                race_start_frame=snap.race_start_frame,
+                race_end_frame=snap.race_end_frame,
+                characters=characters,
+                winner=characters[snap.winner_index] if snap.winner_index >= 0 else None,
+                placements=[c for c in characters if c.finished],
             )
 
-            # Cache last N frames to save memory
+            rendered = frame_renderer.render_frame(
+                scene, render_state, events, frame_idx
+            )
+
+            # Cache last N frames only (each frame: ~2.5 MB at 720p, ~6 MB at 1080p)
             frame_cache[frame_idx] = rendered
-            if len(frame_cache) > 30:
+            if len(frame_cache) > cache_limit:
                 oldest = min(frame_cache.keys())
                 del frame_cache[oldest]
+
+            # Periodic GC to prevent frame buffer accumulation
+            if frame_idx % 100 == 0 and frame_idx > 0:
+                gc.collect()
 
             return rendered
 
@@ -4414,6 +4558,7 @@ class RaceOrchestrator:
         # 10. Cleanup
         audio_manager.cleanup()
         frame_cache.clear()
+        gc.collect()   # final cleanup after encoding
 
         log.info(f"  🏁 Race #{race_index + 1} complete!")
         log.info(f"     Winner: {winner_name}")
@@ -4561,11 +4706,17 @@ def main():
     print("=" * 70 + "\n")
 
     # --- CONFIGURATION ---
-    # Modify these values to customize your races!
+    # low_memory_mode=True  → 720×1280, smaller frame cache, fewer particles.
+    #   Required for Google Colab Free (≤12 GB RAM).  Set to False on Colab Pro.
+    # low_memory_mode=False → full 1080×1920 quality.
     config = MasterConfig(
+        low_memory_mode=True,   # ← CRITICAL: keep True on Colab Free
         video=VideoConfig(
-            width=1080,
-            height=1920,
+            # 720×1280 when low_memory_mode=True (default, Colab-safe).
+            # Change to 1080×1920 and set low_memory_mode=False for full
+            # quality on Colab Pro or a local machine with ≥8 GB free RAM.
+            width=720,
+            height=1280,
             fps=30,
             format=VideoFormat.YOUTUBE_SHORTS,
             bitrate="6000k",
@@ -4589,7 +4740,7 @@ def main():
         ),
         scene=SceneConfig(
             crowd_enabled=True,
-            particle_count=120,
+            particle_count=120,   # halved automatically in low_memory_mode
             track_height_ratio=0.52,
             subscribe_watermark=True,
         ),
@@ -4636,6 +4787,7 @@ def main():
     print("   • Use orchestrator.generate_batch(50) for bulk generation")
     print("   • Modify RaceConfig to change race speed/duration")
     print("   • Add new scene types by subclassing BaseScene")
+    print("   • Set low_memory_mode=False for full 1080×1920 on Colab Pro")
     print()
 
     return video_path
