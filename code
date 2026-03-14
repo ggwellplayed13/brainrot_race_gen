@@ -117,7 +117,7 @@ class VideoConfig:
 @dataclass
 class RaceConfig:
     """Configuration for race simulation parameters."""
-    num_characters: int = 5
+    num_characters: int = 10
     race_duration_seconds: float = 8.0
     min_race_duration: float = 6.0
     max_race_duration: float = 12.0
@@ -129,7 +129,7 @@ class RaceConfig:
     deceleration_chance: float = 0.015
     burst_speed_multiplier: float = 2.5
     burst_duration_frames: int = 15
-    lane_count: int = 5
+    lane_count: int = 10
     countdown_duration: float = 2.0
     winner_celebration_duration: float = 3.0
     photo_finish_threshold: float = 0.02
@@ -137,16 +137,16 @@ class RaceConfig:
 @dataclass
 class AnimationConfig:
     """Configuration for character animation system."""
-    sprite_width: int = 140
-    sprite_height: int = 180
-    run_cycle_frames: int = 8
+    sprite_width: int = 120
+    sprite_height: int = 150
+    run_cycle_frames: int = 12
     idle_frames: int = 4
-    celebration_frames: int = 12
+    celebration_frames: int = 16
     animation_speed: float = 0.15
-    bounce_amplitude: float = 18.0  # was 8.0 - MUCH bigger
+    bounce_amplitude: float = 16.0
     bounce_frequency: float = 0.3
     lean_angle_max: float = 12.0
-    squash_stretch_amount: float = 0.18  # was 0.08
+    squash_stretch_amount: float = 0.18
     speed_trail_count: int = 3
     emoji_popup_enabled: bool = True
     dust_puff_enabled: bool = True
@@ -180,8 +180,8 @@ class EventConfig:
     max_concurrent_events: int = 3
     bird_flock_chance: float = 0.005
     camera_shake_chance: float = 0.003
-    speed_boost_chance: float = 0.008
-    confetti_chance: float = 0.004
+    speed_boost_chance: float = 0.015
+    confetti_chance: float = 0.01
     lightning_chance: float = 0.002
     dust_cloud_chance: float = 0.01
     screen_flash_chance: float = 0.002
@@ -490,8 +490,136 @@ class ProceduralCharacterGenerator:
     facial features, and accessories.
     """
 
-    # Brainrot-style character definitions
+    # Brainrot-style character definitions — Italian Brainrot + OG roster
     CHARACTER_TEMPLATES = [
+        # ── ITALIAN BRAINROT CHARACTERS ──────────────────────────────────
+        {
+            "name": "Tralalero Tralala",
+            "body_color": (0, 120, 255),
+            "accent_color": (255, 215, 0),
+            "eye_style": "crazy",
+            "accessory": "tophat",
+            "body_shape": "round",
+            "expression": "manic",
+        },
+        {
+            "name": "Tung Tung Tung Sahur",
+            "body_color": (80, 80, 80),
+            "accent_color": (255, 0, 0),
+            "eye_style": "intense",
+            "accessory": "drum",
+            "body_shape": "tall",
+            "expression": "fierce",
+        },
+        {
+            "name": "Bombardino Crocodilo",
+            "body_color": (0, 130, 0),
+            "accent_color": (255, 140, 0),
+            "eye_style": "angry",
+            "accessory": "helmet",
+            "body_shape": "chunky",
+            "expression": "determined",
+        },
+        {
+            "name": "Lirili Larila",
+            "body_color": (255, 100, 180),
+            "accent_color": (180, 0, 255),
+            "eye_style": "sparkle",
+            "accessory": "wings",
+            "body_shape": "slim",
+            "expression": "excited",
+        },
+        {
+            "name": "Brr Brr Patapim",
+            "body_color": (150, 220, 255),
+            "accent_color": (240, 240, 255),
+            "eye_style": "cool",
+            "accessory": "scarf",
+            "body_shape": "medium",
+            "expression": "chill",
+        },
+        {
+            "name": "Cappuccino Assassino",
+            "body_color": (139, 90, 43),
+            "accent_color": (255, 235, 200),
+            "eye_style": "wink",
+            "accessory": "cup",
+            "body_shape": "round",
+            "expression": "charming",
+        },
+        {
+            "name": "Boneca Ambalabu",
+            "body_color": (220, 0, 150),
+            "accent_color": (0, 255, 230),
+            "eye_style": "wide",
+            "accessory": "bow",
+            "body_shape": "medium",
+            "expression": "surprised",
+        },
+        {
+            "name": "Glorbo Fruttodrillo",
+            "body_color": (100, 255, 0),
+            "accent_color": (255, 50, 50),
+            "eye_style": "fierce",
+            "accessory": "fruit_hat",
+            "body_shape": "wide",
+            "expression": "powerful",
+        },
+        {
+            "name": "Spaghettino Macaronino",
+            "body_color": (255, 220, 50),
+            "accent_color": (200, 0, 0),
+            "eye_style": "focused",
+            "accessory": "chef_hat",
+            "body_shape": "tall",
+            "expression": "concentrated",
+        },
+        {
+            "name": "Bombombini Gusini",
+            "body_color": (255, 165, 0),
+            "accent_color": (255, 255, 0),
+            "eye_style": "wide",
+            "accessory": "bomb",
+            "body_shape": "round",
+            "expression": "excited",
+        },
+        {
+            "name": "La Vaca Saturno Saturnita",
+            "body_color": (150, 0, 200),
+            "accent_color": (255, 215, 0),
+            "eye_style": "sparkle",
+            "accessory": "saturn_ring",
+            "body_shape": "chunky",
+            "expression": "cosmic",
+        },
+        {
+            "name": "Trippa Troppa",
+            "body_color": (0, 180, 170),
+            "accent_color": (255, 150, 200),
+            "eye_style": "crazy",
+            "accessory": "propeller",
+            "body_shape": "round",
+            "expression": "dizzy",
+        },
+        {
+            "name": "Chimpanzini Bananini",
+            "body_color": (180, 120, 60),
+            "accent_color": (255, 230, 0),
+            "eye_style": "wink",
+            "accessory": "banana",
+            "body_shape": "medium",
+            "expression": "playful",
+        },
+        {
+            "name": "Burbaloni Luliloli",
+            "body_color": (180, 150, 255),
+            "accent_color": (100, 255, 100),
+            "eye_style": "dreamy",
+            "accessory": "bubbles",
+            "body_shape": "slim",
+            "expression": "floaty",
+        },
+        # ── OG BRAINROT CHARACTERS ───────────────────────────────────────
         {
             "name": "Skibidi Boss",
             "body_color": (220, 50, 50),
@@ -520,15 +648,6 @@ class ProceduralCharacterGenerator:
             "expression": "excited",
         },
         {
-            "name": "Fanum Tax",
-            "body_color": (255, 140, 0),
-            "accent_color": (100, 255, 100),
-            "eye_style": "wide",
-            "accessory": "headband",
-            "body_shape": "chunky",
-            "expression": "hungry",
-        },
-        {
             "name": "Gyatt Lord",
             "body_color": (180, 50, 220),
             "accent_color": (255, 255, 100),
@@ -536,33 +655,6 @@ class ProceduralCharacterGenerator:
             "accessory": "cape",
             "body_shape": "wide",
             "expression": "powerful",
-        },
-        {
-            "name": "Mewing King",
-            "body_color": (0, 180, 180),
-            "accent_color": (255, 150, 0),
-            "eye_style": "focused",
-            "accessory": "band",
-            "body_shape": "slim",
-            "expression": "concentrated",
-        },
-        {
-            "name": "Rizzler",
-            "body_color": (255, 50, 150),
-            "accent_color": (50, 255, 200),
-            "eye_style": "wink",
-            "accessory": "bowtie",
-            "body_shape": "suave",
-            "expression": "charming",
-        },
-        {
-            "name": "Icy Spice",
-            "body_color": (100, 200, 255),
-            "accent_color": (255, 100, 100),
-            "eye_style": "fierce",
-            "accessory": "tiara",
-            "body_shape": "medium",
-            "expression": "fierce",
         },
     ]
 
@@ -831,6 +923,43 @@ class ProceduralCharacterGenerator:
                 # Slit pupil
                 draw.line([ex + pupil_offset_x, eye_y - 3,
                            ex + pupil_offset_x, eye_y + 3], fill=black, width=2)
+
+        elif eye_style == "crazy":
+            # One eye bigger than the other, pupils pointing different directions
+            left_size = eye_size + 4
+            right_size = eye_size - 2
+            draw.ellipse([eye_left_x - left_size, eye_y - left_size,
+                          eye_left_x + left_size, eye_y + left_size], fill=white)
+            draw.ellipse([eye_left_x - 4, eye_y - 6, eye_left_x + 4, eye_y + 2],
+                         fill=(200, 0, 200, 255))
+            draw.ellipse([eye_right_x - right_size, eye_y - right_size,
+                          eye_right_x + right_size, eye_y + right_size], fill=white)
+            draw.ellipse([eye_right_x + 1, eye_y + 1, eye_right_x + 5, eye_y + 5],
+                         fill=(0, 180, 200, 255))
+            # Crazy swirl marks
+            draw.arc([eye_left_x - 3, eye_y - 3, eye_left_x + 3, eye_y + 3],
+                     0, 270, fill=black, width=1)
+
+        elif eye_style == "dreamy":
+            # Half-closed eyes with stars in pupils
+            for ex in [eye_left_x, eye_right_x]:
+                # Half-closed: only bottom half visible
+                draw.ellipse([ex - eye_size, eye_y - eye_size,
+                              ex + eye_size, eye_y + eye_size], fill=white)
+                # Heavy eyelid (top half covered)
+                draw.ellipse([ex - eye_size - 1, eye_y - eye_size - 1,
+                              ex + eye_size + 1, eye_y], fill=(180, 140, 200, 255))
+                # Star in pupil
+                star_size = 4
+                for j in range(4):
+                    angle = j * math.pi / 2 + frame * 0.05
+                    sx = ex + int(math.cos(angle) * star_size)
+                    sy = eye_y + 3 + int(math.sin(angle) * star_size)
+                    draw.ellipse([sx - 1, sy - 1, sx + 1, sy + 1],
+                                 fill=(255, 220, 50, 230))
+                draw.ellipse([ex - 2, eye_y + 1, ex + 2, eye_y + 5],
+                             fill=(80, 0, 120, 255))
+
         else:
             # Default eyes
             for ex in [eye_left_x, eye_right_x]:
@@ -881,6 +1010,69 @@ class ProceduralCharacterGenerator:
             # Smirk
             draw.arc([cx - 8, mouth_y - 8, cx + 8, mouth_y + 4],
                      20, 160, fill=(20, 20, 20, 255), width=2)
+
+        elif expression == "manic":
+            # Huge zigzag grin
+            pts = []
+            steps = 8
+            for i in range(steps + 1):
+                t = i / steps
+                mx = int(cx - 14 + 28 * t)
+                my = mouth_y + (0 if i % 2 == 0 else 8)
+                pts.append((mx, my))
+            for i in range(len(pts) - 1):
+                draw.line([pts[i], pts[i + 1]], fill=(20, 20, 20, 255), width=2)
+
+        elif expression == "chill":
+            # Slight smirk
+            draw.arc([cx - 5, mouth_y - 2, cx + 10, mouth_y + 6],
+                     10, 170, fill=(20, 20, 20, 255), width=2)
+
+        elif expression == "surprised":
+            # Perfect O mouth
+            mouth_r = 5 + int(abs(math.sin(phase * 2 * math.pi)) * 2)
+            draw.ellipse([cx - mouth_r, mouth_y - mouth_r,
+                          cx + mouth_r, mouth_y + mouth_r],
+                         fill=(150, 40, 40, 255), outline=(20, 20, 20, 255), width=2)
+
+        elif expression == "cosmic":
+            # Wavy mouth with sparkle dots
+            draw.arc([cx - 8, mouth_y - 4, cx + 8, mouth_y + 4],
+                     0, 180, fill=(20, 20, 20, 255), width=2)
+            sparkle_alpha = int(abs(math.sin(phase * 4 * math.pi)) * 200 + 55)
+            for sx in [cx - 6, cx, cx + 6]:
+                draw.ellipse([sx - 1, mouth_y - 7, sx + 1, mouth_y - 5],
+                             fill=(255, 220, 50, sparkle_alpha))
+
+        elif expression == "dizzy":
+            # Spiral-ish wiggly mouth
+            pts = []
+            for i in range(9):
+                t = i / 8
+                mx = int(cx - 10 + 20 * t)
+                my = int(mouth_y + math.sin(t * 3 * math.pi) * 4)
+                pts.append((mx, my))
+            for i in range(len(pts) - 1):
+                draw.line([pts[i], pts[i + 1]], fill=(20, 20, 20, 255), width=2)
+
+        elif expression == "playful":
+            # Tongue sticking out
+            draw.arc([cx - 8, mouth_y - 4, cx + 8, mouth_y + 4],
+                     0, 180, fill=(20, 20, 20, 255), width=2)
+            draw.ellipse([cx - 5, mouth_y + 2, cx + 5, mouth_y + 10],
+                         fill=(255, 100, 120, 230), outline=(20, 20, 20, 200), width=1)
+
+        elif expression == "floaty":
+            # Gentle wavy smile
+            pts = []
+            for i in range(7):
+                t = i / 6
+                mx = int(cx - 10 + 20 * t)
+                my = int(mouth_y + math.sin(t * 2 * math.pi) * 3 + 2)
+                pts.append((mx, my))
+            for i in range(len(pts) - 1):
+                draw.line([pts[i], pts[i + 1]], fill=(20, 20, 20, 255), width=2)
+
         else:
             # Default small smile
             draw.arc([cx - 6, mouth_y - 4, cx + 6, mouth_y + 4],
@@ -1073,6 +1265,242 @@ class ProceduralCharacterGenerator:
                 )
             draw.arc([cx - 16, tiara_y, cx + 16, tiara_y + 10],
                      200, 340, fill=color + (255,), width=2)
+
+        elif accessory == "tophat":
+            hat_y = cy - head_r - 2
+            # Brim
+            draw.ellipse([cx - 22, hat_y + 2, cx + 22, hat_y + 10],
+                         fill=color + (255,),
+                         outline=ColorUtils.darken(color, 0.5) + (255,), width=1)
+            # Tall top
+            draw.rectangle([cx - 14, hat_y - 24, cx + 14, hat_y + 6],
+                           fill=color + (255,),
+                           outline=ColorUtils.darken(color, 0.5) + (255,), width=1)
+            # Hat band
+            draw.rectangle([cx - 14, hat_y - 4, cx + 14, hat_y + 1],
+                           fill=ColorUtils.darken(color, 0.5) + (255,))
+
+        elif accessory == "drum":
+            # Small drum on the side of the body
+            drum_x = cx + head_r + 2
+            drum_y = cy + head_r + 4
+            drum_w, drum_h = 20, 14
+            draw.ellipse([drum_x, drum_y - 4, drum_x + drum_w, drum_y + 4],
+                         fill=color + (255,), outline=(60, 40, 20, 255), width=1)
+            draw.rectangle([drum_x, drum_y, drum_x + drum_w, drum_y + drum_h],
+                           fill=ColorUtils.darken(color, 0.8) + (255,))
+            draw.ellipse([drum_x, drum_y + drum_h - 4,
+                          drum_x + drum_w, drum_y + drum_h + 4],
+                         fill=color + (255,), outline=(60, 40, 20, 255), width=1)
+            # Drumstick
+            stick_angle = math.sin(phase * 2 * math.pi) * 20
+            sx_end = drum_x + drum_w // 2 + int(math.sin(math.radians(stick_angle)) * 12)
+            sy_end = drum_y - 10 + int(math.cos(math.radians(stick_angle)) * 12)
+            draw.line([drum_x + drum_w // 2, drum_y - 2, sx_end, sy_end],
+                      fill=(180, 100, 40, 255), width=2)
+            draw.ellipse([sx_end - 3, sy_end - 3, sx_end + 3, sy_end + 3],
+                         fill=(220, 140, 60, 255))
+
+        elif accessory == "helmet":
+            hat_y = cy - head_r
+            # Military helmet dome
+            draw.ellipse([cx - head_r - 4, hat_y - 8,
+                          cx + head_r + 4, hat_y + head_r],
+                         fill=ColorUtils.darken(color, 0.7) + (255,),
+                         outline=ColorUtils.darken(color, 0.4) + (255,), width=2)
+            # Brim
+            draw.rectangle([cx - head_r - 8, hat_y + head_r - 4,
+                            cx + head_r + 8, hat_y + head_r + 2],
+                           fill=ColorUtils.darken(color, 0.5) + (255,))
+            # Star emblem
+            for j in range(5):
+                angle = j * 2 * math.pi / 5 - math.pi / 2
+                ex = cx + int(math.cos(angle) * 6)
+                ey = hat_y + head_r // 2 + int(math.sin(angle) * 6)
+                draw.ellipse([ex - 1, ey - 1, ex + 1, ey + 1],
+                             fill=(255, 200, 0, 230))
+
+        elif accessory == "wings":
+            wing_cx = cx
+            wing_cy = cy + 2
+            wing_flap = math.sin(phase * 2 * math.pi) * 10
+            # Left wing
+            left_pts = [
+                (wing_cx - 4, wing_cy),
+                (wing_cx - 28, wing_cy - 14 - int(wing_flap)),
+                (wing_cx - 22, wing_cy + 6),
+            ]
+            draw.polygon(left_pts, fill=color + (180,),
+                         outline=ColorUtils.darken(color, 0.6) + (200,))
+            # Right wing
+            right_pts = [
+                (wing_cx + 4, wing_cy),
+                (wing_cx + 28, wing_cy - 14 - int(wing_flap)),
+                (wing_cx + 22, wing_cy + 6),
+            ]
+            draw.polygon(right_pts, fill=color + (180,),
+                         outline=ColorUtils.darken(color, 0.6) + (200,))
+
+        elif accessory == "scarf":
+            scarf_y = cy + head_r + 2
+            flow = int(math.sin(phase * 3 * math.pi) * 6)
+            # Scarf wrap
+            draw.arc([cx - head_r - 2, scarf_y - 4,
+                      cx + head_r + 2, scarf_y + 10],
+                     0, 180, fill=color + (230,), width=5)
+            # Trailing end
+            pts = [
+                (cx + head_r, scarf_y + 4),
+                (cx + head_r + 15 + flow, scarf_y + 20),
+                (cx + head_r + 8 + flow, scarf_y + 32),
+            ]
+            for i in range(len(pts) - 1):
+                draw.line([pts[i], pts[i + 1]], fill=color + (200,), width=4)
+
+        elif accessory == "cup":
+            cup_y = cy - head_r - 2
+            # Coffee cup on head
+            cup_w, cup_h = 22, 20
+            draw.polygon(
+                [(cx - cup_w // 2, cup_y),
+                 (cx + cup_w // 2, cup_y),
+                 (cx + cup_w // 2 - 2, cup_y - cup_h),
+                 (cx - cup_w // 2 + 2, cup_y - cup_h)],
+                fill=color + (255,),
+                outline=ColorUtils.darken(color, 0.5) + (255,), width=1
+            )
+            # Steam wisps
+            steam_alpha = int(100 + 80 * abs(math.sin(phase * 3 * math.pi)))
+            for sx_off in [-5, 0, 5]:
+                swy = cup_y - cup_h - 8 - int(phase * 6)
+                draw.arc([cx + sx_off - 3, swy, cx + sx_off + 3, swy + 8],
+                         180, 0, fill=(220, 220, 220, steam_alpha), width=2)
+            # Handle
+            draw.arc([cx + cup_w // 2 - 2, cup_y - cup_h + 4,
+                      cx + cup_w // 2 + 8, cup_y - 4],
+                     270, 90, fill=color + (255,), width=3)
+
+        elif accessory == "bow":
+            bow_y = cy - head_r - 4
+            # Left bow petal
+            draw.polygon([(cx, bow_y), (cx - 14, bow_y - 8), (cx - 14, bow_y + 8)],
+                         fill=color + (255,),
+                         outline=ColorUtils.darken(color, 0.6) + (255,), width=1)
+            # Right bow petal
+            draw.polygon([(cx, bow_y), (cx + 14, bow_y - 8), (cx + 14, bow_y + 8)],
+                         fill=color + (255,),
+                         outline=ColorUtils.darken(color, 0.6) + (255,), width=1)
+            # Center knot
+            draw.ellipse([cx - 4, bow_y - 4, cx + 4, bow_y + 4],
+                         fill=ColorUtils.darken(color, 0.7) + (255,))
+
+        elif accessory == "fruit_hat":
+            hat_y = cy - head_r - 4
+            # Base hat
+            draw.ellipse([cx - 18, hat_y - 2, cx + 18, hat_y + 8],
+                         fill=ColorUtils.darken(color, 0.7) + (255,))
+            draw.rectangle([cx - 10, hat_y - 10, cx + 10, hat_y + 2],
+                           fill=ColorUtils.darken(color, 0.7) + (255,))
+            # Fruit pile
+            fruits = [
+                (cx, hat_y - 20, 7, (255, 50, 50)),    # red
+                (cx - 8, hat_y - 16, 6, (255, 200, 0)), # yellow
+                (cx + 8, hat_y - 15, 5, (0, 180, 50)),  # green
+                (cx - 3, hat_y - 30, 5, (200, 0, 200)), # purple
+            ]
+            for fx, fy, fr, fc in fruits:
+                draw.ellipse([fx - fr, fy - fr, fx + fr, fy + fr], fill=fc + (240,))
+
+        elif accessory == "chef_hat":
+            hat_y = cy - head_r - 2
+            # Poofy top
+            draw.ellipse([cx - 16, hat_y - 30, cx + 16, hat_y + 4],
+                         fill=(250, 250, 250, 255),
+                         outline=(200, 200, 200, 255), width=1)
+            # Straight band
+            draw.rectangle([cx - 14, hat_y - 6, cx + 14, hat_y + 4],
+                           fill=(240, 240, 240, 255),
+                           outline=(180, 180, 180, 255), width=1)
+
+        elif accessory == "bomb":
+            bomb_y = cy - head_r - 8
+            bomb_r = 11
+            # Black bomb body
+            draw.ellipse([cx - bomb_r, bomb_y - bomb_r,
+                          cx + bomb_r, bomb_y + bomb_r],
+                         fill=(30, 30, 30, 255),
+                         outline=(60, 60, 60, 255), width=1)
+            # Fuse
+            fuse_wobble = int(math.sin(phase * 4 * math.pi) * 2)
+            draw.line([cx + bomb_r - 2, bomb_y - bomb_r + 2,
+                       cx + bomb_r + 5 + fuse_wobble, bomb_y - bomb_r - 8],
+                      fill=(120, 80, 40, 255), width=2)
+            # Spark at fuse tip
+            spark_alpha = int(abs(math.sin(phase * 6 * math.pi)) * 200 + 55)
+            draw.ellipse([cx + bomb_r + 3 + fuse_wobble, bomb_y - bomb_r - 10,
+                          cx + bomb_r + 7 + fuse_wobble, bomb_y - bomb_r - 6],
+                         fill=(255, 180, 0, spark_alpha))
+
+        elif accessory == "saturn_ring":
+            ring_y = cy
+            ring_w = head_r + 20
+            ring_h = 8
+            # Ring behind (bottom half)
+            draw.arc([cx - ring_w, ring_y - ring_h,
+                      cx + ring_w, ring_y + ring_h],
+                     0, 180, fill=color + (160,), width=4)
+            # Ring in front (top half) - drawn after head so it appears in front
+            draw.arc([cx - ring_w, ring_y - ring_h,
+                      cx + ring_w, ring_y + ring_h],
+                     180, 360, fill=color + (220,), width=4)
+
+        elif accessory == "propeller":
+            prop_y = cy - head_r - 4
+            # Hub
+            draw.ellipse([cx - 5, prop_y - 5, cx + 5, prop_y + 5],
+                         fill=ColorUtils.darken(color, 0.6) + (255,))
+            # Spinning blades
+            spin = phase * 2 * math.pi * 2
+            for b in range(3):
+                blade_angle = spin + b * (2 * math.pi / 3)
+                bx = cx + int(math.cos(blade_angle) * 14)
+                by = prop_y + int(math.sin(blade_angle) * 5)
+                ex_b = cx + int(math.cos(blade_angle + math.pi) * 14)
+                ey_b = prop_y + int(math.sin(blade_angle + math.pi) * 5)
+                draw.line([bx, by, ex_b, ey_b], fill=color + (230,), width=5)
+
+        elif accessory == "banana":
+            ban_y = cy - head_r - 4
+            # Banana shape (curved yellow)
+            ban_color = (255, 220, 30, 255)
+            draw.arc([cx - 14, ban_y - 16, cx + 14, ban_y + 4],
+                     200, 340, fill=ban_color, width=8)
+            # Tips
+            draw.ellipse([cx - 15, ban_y - 8, cx - 11, ban_y - 4],
+                         fill=(160, 100, 20, 255))
+            draw.ellipse([cx + 11, ban_y - 8, cx + 15, ban_y - 4],
+                         fill=(160, 100, 20, 255))
+
+        elif accessory == "bubbles":
+            # Floating bubbles around the character
+            bubble_alpha = int(120 + 80 * abs(math.sin(phase * 2 * math.pi)))
+            bubble_positions = [
+                (cx - 20, cy - head_r - 10, 8),
+                (cx + 22, cy - head_r - 5, 6),
+                (cx - 14, cy - head_r - 22, 5),
+                (cx + 10, cy - head_r - 20, 7),
+                (cx + 28, cy + 10, 5),
+            ]
+            for bx_b, by_b, br_b in bubble_positions:
+                # Bubble offset floats with animation
+                float_off = int(math.sin(phase * 2 * math.pi + bx_b * 0.1) * 4)
+                draw.ellipse([bx_b - br_b, by_b - br_b + float_off,
+                              bx_b + br_b, by_b + br_b + float_off],
+                             outline=color + (bubble_alpha,), width=2)
+                # Shine
+                draw.ellipse([bx_b - br_b // 2, by_b - br_b + float_off,
+                              bx_b, by_b - br_b // 3 + float_off],
+                             fill=(255, 255, 255, bubble_alpha // 2))
 
 print("✅ Procedural asset generator loaded.")
 
@@ -3965,7 +4393,8 @@ def main():
             bitrate="6000k",
         ),
         race=RaceConfig(
-            num_characters=5,
+            num_characters=10,
+            lane_count=10,
             min_race_duration=6.0,
             max_race_duration=10.0,
             countdown_duration=2.0,
@@ -3974,22 +4403,35 @@ def main():
             speed_variance=0.004,
         ),
         animation=AnimationConfig(
-            sprite_width=140,
-            sprite_height=180,
-            run_cycle_frames=8,
-            celebration_frames=12,
-            bounce_amplitude=8.0,
+            sprite_width=120,
+            sprite_height=150,
+            run_cycle_frames=12,
+            celebration_frames=16,
+            bounce_amplitude=16.0,
         ),
         scene=SceneConfig(
             crowd_enabled=True,
-            particle_count=60,
+            particle_count=120,
+            track_height_ratio=0.52,
+            subscribe_watermark=True,
         ),
         event=EventConfig(
             events_enabled=True,
             bird_flock_chance=0.006,
             camera_shake_chance=0.004,
-            speed_boost_chance=0.01,
-            confetti_chance=0.005,
+            speed_boost_chance=0.015,
+            confetti_chance=0.01,
+        ),
+        effects=EffectsConfig(
+            speed_trails=True,
+            emoji_popups=True,
+            who_will_win_text=True,
+            overtake_callout=True,
+            screen_border_glow=True,
+            impact_frames=True,
+            fireworks_enabled=True,
+            fireworks_count=8,
+            confetti_count=300,
         ),
         output_dir="/content/generated_races",
         seed=None,   # None = random seed each run
